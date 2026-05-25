@@ -142,7 +142,7 @@ class AutoSkillsPlugin(Star):
     def _should_review(self, event: AstrMessageEvent, resp: LLMResponse) -> bool:
         if not self.config.enabled:
             return False
-        if self.config.admin_only and hasattr(event, "is_admin") and not event.is_admin():
+        if self.config.review_admin_only and not self._is_admin(event):
             return False
         if not str(getattr(resp, "completion_text", "") or "").strip():
             return False
@@ -237,7 +237,7 @@ class AutoSkillsPlugin(Star):
                 logger.warning("Auto Skills review failed: %s", exc)
 
     async def _handle_review_delete(self, event: AstrMessageEvent, skill_name: str, reason: str) -> None:
-        if hasattr(event, "is_admin") and not event.is_admin():
+        if not self._delete_allowed(event):
             raise PermissionError("Only administrators can delete auto-created skills")
         internal_name = self._resolve_current_skill_name(event, skill_name)
         if not internal_name:
@@ -253,8 +253,14 @@ class AutoSkillsPlugin(Star):
         if hasattr(event, "send"):
             await event.send(event.plain_result(f"请再次确认是否删除自动创建的 Skill：{skill_name}"))
 
-    def _admin_allowed(self, event: AstrMessageEvent) -> bool:
+    def _is_admin(self, event: AstrMessageEvent) -> bool:
         return bool(hasattr(event, "is_admin") and event.is_admin())
+
+    def _llm_tool_write_allowed(self, event: AstrMessageEvent) -> bool:
+        return not self.config.llm_tool_write_admin_only or self._is_admin(event)
+
+    def _delete_allowed(self, event: AstrMessageEvent) -> bool:
+        return not self.config.delete_admin_only or self._is_admin(event)
 
     async def _sync_after_tool_write(self) -> None:
         if not self.config.auto_sync_sandbox:
@@ -279,7 +285,7 @@ class AutoSkillsPlugin(Star):
             skill_markdown(string): 完整的 SKILL.md 内容，必须包含 YAML frontmatter 和正文。
             reason(string): 创建这个 Skill 的原因。
         """
-        if not self._admin_allowed(event):
+        if not self._llm_tool_write_allowed(event):
             return "只有管理员可以创建自动 Skill。"
         try:
             display_name = self._normalize_display_name(skill_name)
@@ -312,7 +318,7 @@ class AutoSkillsPlugin(Star):
             skill_markdown(string): 更新后的完整 SKILL.md 内容，必须包含 YAML frontmatter 和正文。
             reason(string): 更新这个 Skill 的原因。
         """
-        if not self._admin_allowed(event):
+        if not self._llm_tool_write_allowed(event):
             return "只有管理员可以更新自动 Skill。"
         try:
             internal_name = self._resolve_current_skill_name(event, skill_name)
@@ -345,7 +351,7 @@ class AutoSkillsPlugin(Star):
             skill_name(string): 要删除的 Skill 名称。
             reason(string): 请求删除这个 Skill 的原因。
         """
-        if not self._admin_allowed(event):
+        if not self._delete_allowed(event):
             return "只有管理员可以删除自动 Skill。"
         try:
             pending_key = getattr(event, "unified_msg_origin", "") or "default"

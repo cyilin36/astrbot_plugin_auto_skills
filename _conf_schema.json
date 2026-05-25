@@ -5,9 +5,21 @@
     "type": "bool",
     "default": true
   },
-  "admin_only": {
-    "description": "仅管理员可触发",
-    "hint": "开启后，只有 AstrBot 管理员的对话会触发自动复盘；/autoskill 管理指令也仅管理员可用。",
+  "review_admin_only": {
+    "description": "仅管理员可触发后台自动复盘",
+    "hint": "开启后，只有 AstrBot 管理员的对话会触发后台复盘。关闭后，普通成员的对话也可能在当前 UMO 内自动创建或更新 Skill。",
+    "type": "bool",
+    "default": true
+  },
+  "llm_tool_write_admin_only": {
+    "description": "仅管理员可通过 LLM 工具创建或更新 Skill",
+    "hint": "控制 auto_skill_create 和 auto_skill_patch。关闭后，普通成员也可以通过当前 UMO 的 LLM 工具创建或更新自动 Skill。建议保持开启。",
+    "type": "bool",
+    "default": true
+  },
+  "delete_admin_only": {
+    "description": "仅管理员可删除自动 Skill",
+    "hint": "控制后台复盘删除请求和 auto_skill_delete_request。关闭后，普通成员也可以删除当前 UMO 的自动 Skill，但仍需要二次确认。强烈建议保持开启。",
     "type": "bool",
     "default": true
   },
