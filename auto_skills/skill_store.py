@@ -7,8 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from auto_skills.models import PLUGIN_OWNER, ValidationResult
-from auto_skills.state_store import StateStore
+from .models import PLUGIN_OWNER, ValidationResult
+from .state_store import StateStore
 
 _SKILL_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 

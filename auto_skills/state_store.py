@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from auto_skills.models import PLUGIN_OWNER
+from .models import PLUGIN_OWNER
 
 
 def _now_iso() -> str:

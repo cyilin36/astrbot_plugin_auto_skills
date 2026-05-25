@@ -15,15 +15,15 @@ from astrbot.core.config.astrbot_config import AstrBotConfig
 from astrbot.core.skills.skill_manager import SkillManager
 from astrbot.core.utils.astrbot_path import get_astrbot_plugin_data_path, get_astrbot_skills_path
 
-from auto_skills.config import AutoSkillsConfig
-from auto_skills.models import PLUGIN_OWNER
-from auto_skills.review_runner import (
+from .auto_skills.config import AutoSkillsConfig
+from .auto_skills.models import PLUGIN_OWNER
+from .auto_skills.review_runner import (
     build_review_system_prompt,
     build_review_user_prompt,
     parse_review_decision,
 )
-from auto_skills.skill_store import SkillStore
-from auto_skills.state_store import StateStore
+from .auto_skills.skill_store import SkillStore
+from .auto_skills.state_store import StateStore
 
 
 class AutoSkillsPlugin(Star):
@@ -136,11 +136,11 @@ class AutoSkillsPlugin(Star):
                 self.last_review_status = {"action": "error", "error": str(exc)}
                 logger.warning("Auto Skills review failed: %s", exc)
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command_group("autoskill")
     def autoskill(self):
         pass
 
+    @filter.permission_type(filter.PermissionType.ADMIN)
     @autoskill.command("status")
     async def autoskill_status(self, event: AstrMessageEvent):
         yield event.plain_result(
@@ -150,6 +150,7 @@ class AutoSkillsPlugin(Star):
             f"last={self.last_review_status}"
         )
 
+    @filter.permission_type(filter.PermissionType.ADMIN)
     @autoskill.command("list")
     async def autoskill_list(self, event: AstrMessageEvent):
         skills = self.state_store.list_skills()
@@ -159,6 +160,7 @@ class AutoSkillsPlugin(Star):
         lines = [f"- {item['name']} v{item.get('version', 0)}: {item.get('last_action', '')}" for item in skills]
         yield event.plain_result("Auto-created skills:\n" + "\n".join(lines))
 
+    @filter.permission_type(filter.PermissionType.ADMIN)
     @autoskill.command("view")
     async def autoskill_view(self, event: AstrMessageEvent, name: str):
         record = self.state_store.get_skill(name)
@@ -173,6 +175,7 @@ class AutoSkillsPlugin(Star):
             f"reason: {record.get('last_reason')}"
         )
 
+    @filter.permission_type(filter.PermissionType.ADMIN)
     @autoskill.command("rollback")
     async def autoskill_rollback(self, event: AstrMessageEvent, name: str):
         try:

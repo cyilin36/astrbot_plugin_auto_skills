@@ -2,6 +2,7 @@ import asyncio
 import importlib.util
 import sys
 import types
+from pathlib import Path
 from types import SimpleNamespace
 
 
@@ -90,10 +91,26 @@ async def _sync_skills_to_active_sandboxes():
 
 def _load_plugin(tmp_path):
     _install_astrbot_stubs(tmp_path)
-    sys.modules.pop("auto_skills_plugin_main", None)
-    spec = importlib.util.spec_from_file_location("auto_skills_plugin_main", "main.py")
+    package_name = "data.plugins.astrbot_plugin_auto_skills"
+    for module_name in [
+        "data",
+        "data.plugins",
+        package_name,
+        f"{package_name}.main",
+    ]:
+        sys.modules.pop(module_name, None)
+    data_module = types.ModuleType("data")
+    data_module.__path__ = []
+    plugins_module = types.ModuleType("data.plugins")
+    plugins_module.__path__ = []
+    package_module = types.ModuleType(package_name)
+    package_module.__path__ = [str(Path.cwd())]
+    sys.modules["data"] = data_module
+    sys.modules["data.plugins"] = plugins_module
+    sys.modules[package_name] = package_module
+    spec = importlib.util.spec_from_file_location(f"{package_name}.main", "main.py")
     plugin_main = importlib.util.module_from_spec(spec)
-    sys.modules["auto_skills_plugin_main"] = plugin_main
+    sys.modules[f"{package_name}.main"] = plugin_main
     assert spec.loader is not None
     spec.loader.exec_module(plugin_main)
     return plugin_main.AutoSkillsPlugin
@@ -142,6 +159,14 @@ def test_on_agent_done_schedules_background_review(monkeypatch, tmp_path):
     asyncio.run(_run_agent_done_and_wait(plugin, event, run_context, resp))
 
     assert plugin.last_review_status["action"] == "noop"
+
+
+def test_plugin_imports_like_astrbot_package(monkeypatch, tmp_path):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+
+    AutoSkillsPlugin = _load_plugin(tmp_path)
+
+    assert AutoSkillsPlugin.__name__ == "AutoSkillsPlugin"
 
 
 def test_disabled_plugin_does_not_schedule_review(monkeypatch, tmp_path):
