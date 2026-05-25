@@ -11,6 +11,16 @@ def test_config_schema_uses_chinese_descriptions():
         assert any("\u4e00" <= char <= "\u9fff" for char in text), key
 
 
+def test_review_provider_uses_astrbot_provider_selector():
+    schema = json.loads(Path("_conf_schema.json").read_text(encoding="utf-8"))
+
+    provider = schema["review_provider_id"]
+    assert provider["type"] == "string"
+    assert provider["default"] == ""
+    assert provider["_special"] == "select_provider"
+    assert "留空" in provider["hint"]
+
+
 def test_autoskill_commands_have_docstrings():
     source = Path("main.py").read_text(encoding="utf-8")
 

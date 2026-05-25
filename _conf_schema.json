@@ -18,9 +18,10 @@
     "default": 10
   },
   "review_provider_id": {
-    "description": "复盘使用的模型提供商 ID",
-    "hint": "可选。留空时使用当前会话正在使用的模型提供商；填写后会固定使用指定 provider ID 执行后台复盘。",
+    "description": "复盘使用的模型提供商",
+    "hint": "可选。从 AstrBot 已添加的模型提供商中选择。留空时使用当前会话正在使用的模型提供商；选择后会固定使用该模型执行后台复盘、Skill 生成和更新判断。",
     "type": "string",
+    "_special": "select_provider",
     "default": ""
   },
   "max_concurrent_reviews": {
