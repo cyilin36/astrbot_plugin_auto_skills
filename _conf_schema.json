@@ -1,46 +1,55 @@
 {
   "enabled": {
-    "description": "Enable automatic background skill review.",
+    "description": "启用自动 Skill 复盘",
+    "hint": "开启后，插件会在 Agent 回合结束后按设定频率后台复盘，并判断是否需要创建或更新可复用的 AstrBot Skill。",
     "type": "bool",
     "default": true
   },
   "admin_only": {
-    "description": "Only run automatic review and management commands for AstrBot administrators.",
+    "description": "仅管理员可触发",
+    "hint": "开启后，只有 AstrBot 管理员的对话会触发自动复盘；/autoskill 管理指令也仅管理员可用。",
     "type": "bool",
     "default": true
   },
   "review_every_turns": {
-    "description": "Run review after this many completed Agent turns per session.",
+    "description": "每多少轮 Agent 完成后复盘一次",
+    "hint": "按会话分别计数。例如填 10 表示同一会话每完成 10 次 Agent 回合后，后台调用一次模型进行 Skill 创建/更新判断。",
     "type": "int",
     "default": 10
   },
   "review_provider_id": {
-    "description": "Optional provider ID for background reviews. Leave empty to use the current session provider.",
+    "description": "复盘使用的模型提供商 ID",
+    "hint": "可选。留空时使用当前会话正在使用的模型提供商；填写后会固定使用指定 provider ID 执行后台复盘。",
     "type": "string",
     "default": ""
   },
   "max_concurrent_reviews": {
-    "description": "Maximum background reviews running at the same time.",
+    "description": "最大并发复盘数",
+    "hint": "限制同时运行的后台复盘任务数量，避免多个会话同时触发时压垮模型或写入状态。通常保持 1 即可。",
     "type": "int",
     "default": 1
   },
   "review_timeout_seconds": {
-    "description": "Timeout for one background review LLM call.",
+    "description": "单次复盘超时时间（秒）",
+    "hint": "后台调用模型进行 Skill 判断的最长等待时间。超时只会记录失败状态，不会影响主对话回复。",
     "type": "int",
     "default": 60
   },
   "max_skill_chars": {
-    "description": "Maximum generated SKILL.md length.",
+    "description": "生成的 SKILL.md 最大字符数",
+    "hint": "限制模型生成或更新的 Skill 文件长度，防止一次写入过大的 SKILL.md。",
     "type": "int",
     "default": 100000
   },
   "max_description_chars": {
-    "description": "Maximum SKILL.md frontmatter description length.",
+    "description": "Skill 描述最大字符数",
+    "hint": "限制 SKILL.md YAML frontmatter 中 description 字段长度。description 会出现在 AstrBot Skills 列表和主 Agent prompt 中。",
     "type": "int",
     "default": 1024
   },
   "auto_sync_sandbox": {
-    "description": "Best-effort sync generated skills to active sandboxes after writes.",
+    "description": "写入后同步到活跃沙盒",
+    "hint": "开启后，插件在写入或更新 Skill 后会尽力调用 AstrBot 沙盒同步逻辑，让活跃 Agent 沙盒尽快看到新 Skill。同步失败不会回滚 Skill 写入。",
     "type": "bool",
     "default": true
   }

@@ -138,11 +138,13 @@ class AutoSkillsPlugin(Star):
 
     @filter.command_group("autoskill")
     def autoskill(self):
+        """管理 Auto Skills 自动创建的 AstrBot Skills。"""
         pass
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @autoskill.command("status")
     async def autoskill_status(self, event: AstrMessageEvent):
+        """查看 Auto Skills 插件状态、复盘频率和最近一次复盘结果。"""
         yield event.plain_result(
             "Auto Skills: "
             f"enabled={self.config.enabled}, "
@@ -153,6 +155,7 @@ class AutoSkillsPlugin(Star):
     @filter.permission_type(filter.PermissionType.ADMIN)
     @autoskill.command("list")
     async def autoskill_list(self, event: AstrMessageEvent):
+        """列出本插件自动创建并拥有的 Skill。"""
         skills = self.state_store.list_skills()
         if not skills:
             yield event.plain_result("No auto-created skills yet.")
@@ -163,6 +166,7 @@ class AutoSkillsPlugin(Star):
     @filter.permission_type(filter.PermissionType.ADMIN)
     @autoskill.command("view")
     async def autoskill_view(self, event: AstrMessageEvent, name: str):
+        """查看某个自动创建 Skill 的版本、更新时间和最近变更原因。"""
         record = self.state_store.get_skill(name)
         if not record or record.get("created_by") != PLUGIN_OWNER:
             yield event.plain_result(f"Skill {name} is not owned by Auto Skills.")
@@ -178,6 +182,7 @@ class AutoSkillsPlugin(Star):
     @filter.permission_type(filter.PermissionType.ADMIN)
     @autoskill.command("rollback")
     async def autoskill_rollback(self, event: AstrMessageEvent, name: str):
+        """将某个自动创建 Skill 回滚到最近一次备份。"""
         try:
             backup_path = self.skill_store.rollback_latest(name)
         except Exception as exc:
