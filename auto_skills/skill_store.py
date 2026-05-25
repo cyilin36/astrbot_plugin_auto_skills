@@ -44,16 +44,20 @@ class SkillStore:
         state_store: StateStore,
         *,
         set_active: Callable[[str, bool], None] | None = None,
+        delete_skill: Callable[[str], None] | None = None,
         backup_root: str | Path | None = None,
         max_skill_chars: int = 100000,
         max_description_chars: int = 1024,
+        max_backups_per_skill: int = 10,
     ):
         self.skills_root = Path(skills_root)
         self.state_store = state_store
         self.set_active = set_active
+        self.delete_skill = delete_skill
         self.backup_root = Path(backup_root) if backup_root else state_store.path.parent / "backups"
         self.max_skill_chars = max_skill_chars
         self.max_description_chars = max_description_chars
+        self.max_backups_per_skill = max_backups_per_skill if max_backups_per_skill > 0 else 10
 
     def validate(self, skill_name: str, markdown: str) -> ValidationResult:
         if not _SKILL_NAME_RE.fullmatch(skill_name):
@@ -104,6 +108,21 @@ class SkillStore:
         backup_path.write_text(skill_md.read_text(encoding="utf-8"), encoding="utf-8")
         return backup_path
 
+    def _prune_backups(self, skill_name: str) -> None:
+        record = self.state_store.get_skill(skill_name)
+        if not record:
+            return
+        backups = [str(path) for path in record.get("backups") or []]
+        if len(backups) <= self.max_backups_per_skill:
+            return
+        keep = backups[-self.max_backups_per_skill :]
+        for backup in backups[: -self.max_backups_per_skill]:
+            try:
+                Path(backup).unlink(missing_ok=True)
+            except OSError:
+                pass
+        self.state_store.update_backups(skill_name, keep)
+
     def create_or_patch(self, skill_name: str, markdown: str, action: str, reason: str) -> None:
         validation = self.validate(skill_name, markdown)
         if not validation.ok:
@@ -128,6 +147,31 @@ class SkillStore:
             reason=reason,
             backup_path=backup_path,
         )
+        self._prune_backups(skill_name)
+
+    def delete_owned(self, skill_name: str, reason: str) -> Path | None:
+        if not self.state_store.is_owned(skill_name):
+            raise PermissionError(f"Skill {skill_name} is not owned by this plugin")
+        skill_md = self._skill_md(skill_name)
+        backup_path = self._backup_existing(skill_name, skill_md)
+        if self.delete_skill is not None:
+            self.delete_skill(skill_name)
+        else:
+            skill_dir = self.skills_root / skill_name
+            if skill_dir.exists():
+                for child in skill_dir.iterdir():
+                    if child.is_file():
+                        child.unlink()
+                skill_dir.rmdir()
+        self.state_store.record_write(
+            skill_name=skill_name,
+            content_hash="",
+            action="delete",
+            reason=reason,
+            backup_path=backup_path,
+        )
+        self._prune_backups(skill_name)
+        return backup_path
 
     def rollback_latest(self, skill_name: str) -> Path:
         record = self.state_store.get_skill(skill_name)

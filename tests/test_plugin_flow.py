@@ -6,6 +6,17 @@ from pathlib import Path
 from types import SimpleNamespace
 
 
+VALID_MARKDOWN = """---
+name: daily-report
+description: Write structured daily reports from work notes.
+---
+
+# Daily Report
+
+Body
+"""
+
+
 class _CommandGroup:
     def __call__(self, func):
         return self
@@ -40,6 +51,9 @@ class _SkillManager:
 
     def set_skill_active(self, name, active):
         _ = (name, active)
+
+    def delete_skill(self, name):
+        _ = name
 
 
 def _install_astrbot_stubs(tmp_path):
@@ -117,9 +131,12 @@ def _load_plugin(tmp_path):
 
 
 class FakeContext:
+    def __init__(self, completion_text='{"action":"noop","reason":"none"}'):
+        self.completion_text = completion_text
+
     async def llm_generate(self, **kwargs):
         self.last_llm_kwargs = kwargs
-        return SimpleNamespace(completion_text='{"action":"noop","reason":"none"}')
+        return SimpleNamespace(completion_text=self.completion_text)
 
     def get_using_provider(self, umo=None):
         _ = umo
@@ -129,12 +146,26 @@ class FakeContext:
 class FakeEvent:
     unified_msg_origin = "platform:private:user"
     message_str = "write a daily report"
+    sent_messages = None
+
+    def is_admin(self):
+        return True
 
     def get_sender_id(self):
         return "admin"
 
     def plain_result(self, text):
         return text
+
+    async def send(self, result):
+        if self.sent_messages is None:
+            self.sent_messages = []
+        self.sent_messages.append(result)
+
+
+class FakeMemberEvent(FakeEvent):
+    def is_admin(self):
+        return False
 
 
 async def _wait_for_tasks(plugin):
@@ -188,3 +219,59 @@ def test_list_owned_skills_returns_names(monkeypatch, tmp_path):
     names = [item["name"] for item in plugin.state_store.list_skills()]
 
     assert names == ["daily-report"]
+
+
+def test_delete_command_deletes_owned_skill_without_second_confirmation(monkeypatch, tmp_path):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    AutoSkillsPlugin = _load_plugin(tmp_path)
+    plugin = AutoSkillsPlugin(FakeContext(), {"admin_only": False})
+    plugin.skill_store.create_or_patch("daily-report", VALID_MARKDOWN, "create", "initial")
+    deleted = []
+    plugin.skill_store.delete_skill = lambda name: deleted.append(name)
+
+    async def run_command():
+        results = []
+        async for result in plugin.autoskill_delete(FakeEvent(), "daily-report"):
+            results.append(result)
+        return results
+
+    results = asyncio.run(run_command())
+
+    assert deleted == ["daily-report"]
+    assert "已删除" in results[0]
+
+
+def test_oral_delete_requires_admin_confirmation(monkeypatch, tmp_path):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    decision = '{"action":"delete","skill_name":"daily-report","reason":"用户要求删除"}'
+    AutoSkillsPlugin = _load_plugin(tmp_path)
+    plugin = AutoSkillsPlugin(FakeContext(decision), {"review_every_turns": 1, "admin_only": False})
+    plugin.skill_store.create_or_patch("daily-report", VALID_MARKDOWN, "create", "initial")
+    deleted = []
+    plugin.skill_store.delete_skill = lambda name: deleted.append(name)
+    event = FakeEvent()
+    resp = SimpleNamespace(completion_text="请确认是否删除 daily-report。")
+
+    asyncio.run(_run_agent_done_and_wait(plugin, event, SimpleNamespace(), resp))
+    asyncio.run(_run_agent_done_and_wait(plugin, event, SimpleNamespace(), resp))
+
+    assert deleted == ["daily-report"]
+    assert event.sent_messages is not None
+    assert "请再次确认" in event.sent_messages[0]
+
+
+def test_oral_delete_always_requires_admin_even_when_auto_review_allows_members(monkeypatch, tmp_path):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    decision = '{"action":"delete","skill_name":"daily-report","reason":"用户要求删除"}'
+    AutoSkillsPlugin = _load_plugin(tmp_path)
+    plugin = AutoSkillsPlugin(FakeContext(decision), {"review_every_turns": 1, "admin_only": False})
+    plugin.skill_store.create_or_patch("daily-report", VALID_MARKDOWN, "create", "initial")
+    deleted = []
+    plugin.skill_store.delete_skill = lambda name: deleted.append(name)
+    event = FakeMemberEvent()
+    resp = SimpleNamespace(completion_text="请删除 daily-report。")
+
+    asyncio.run(_run_agent_done_and_wait(plugin, event, SimpleNamespace(), resp))
+
+    assert deleted == []
+    assert plugin.last_review_status["action"] == "error"

@@ -31,6 +31,7 @@ class AutoSkillsConfig:
     review_timeout_seconds: int = 60
     max_skill_chars: int = 100000
     max_description_chars: int = 1024
+    max_backups_per_skill: int = 10
     auto_sync_sandbox: bool = True
 
     @classmethod
@@ -45,5 +46,6 @@ class AutoSkillsConfig:
             review_timeout_seconds=_positive_int(raw, "review_timeout_seconds", 60),
             max_skill_chars=_positive_int(raw, "max_skill_chars", 100000),
             max_description_chars=_positive_int(raw, "max_description_chars", 1024),
+            max_backups_per_skill=_positive_int(raw, "max_backups_per_skill", 10),
             auto_sync_sandbox=_bool_value(raw, "auto_sync_sandbox", True),
         )

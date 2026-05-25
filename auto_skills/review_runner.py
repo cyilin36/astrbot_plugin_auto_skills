@@ -29,7 +29,7 @@ def parse_review_decision(text: str) -> ReviewDecision:
     if not isinstance(data, dict):
         return ReviewDecision(action="noop", reason="Invalid review JSON")
     action = str(data.get("action") or "noop").strip().lower()
-    if action not in {"noop", "create", "patch"}:
+    if action not in {"noop", "create", "patch", "delete"}:
         return ReviewDecision(action="noop", reason=f"Unknown action: {action}")
     return ReviewDecision(
         action=action,
@@ -49,7 +49,8 @@ def build_review_system_prompt() -> str:
         "paths, verification steps, user-corrected process, or operational pitfalls. "
         "Do not save secrets, private facts, one-off narratives, transient setup "
         "failures, or claims that a tool is permanently broken. Allowed actions: "
-        "noop, create, patch. For create and patch, include full skill_markdown "
+        "noop, create, patch, delete. Delete is only a request for user confirmation; "
+        "never delete without an administrator confirming in a later turn. For create and patch, include full skill_markdown "
         "with YAML frontmatter name and description. Use lowercase skill names "
         "matching ^[a-z0-9][a-z0-9._-]{0,63}$."
     )
@@ -70,7 +71,7 @@ def build_review_user_prompt(
         "active_skills": list(active_skills),
         "plugin_owned_skills": list(owned_skills),
         "response_schema": {
-            "action": "noop | create | patch",
+            "action": "noop | create | patch | delete",
             "skill_name": "lowercase-name",
             "reason": "short explanation",
             "skill_markdown": "full SKILL.md for create or patch",

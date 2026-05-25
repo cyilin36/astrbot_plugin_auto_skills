@@ -28,5 +28,5 @@ def test_parse_review_decision_turns_bad_json_into_noop():
 def test_parse_review_decision_rejects_unknown_action():
     decision = parse_review_decision('{"action":"delete","skill_name":"x"}')
 
-    assert decision.action == "noop"
-    assert "Unknown action" in decision.reason
+    assert decision.action == "delete"
+    assert decision.skill_name == "x"

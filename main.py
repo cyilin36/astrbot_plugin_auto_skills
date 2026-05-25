@@ -40,10 +40,13 @@ class AutoSkillsPlugin(Star):
             backup_root=data_root / "backups",
             max_skill_chars=self.config.max_skill_chars,
             max_description_chars=self.config.max_description_chars,
+            max_backups_per_skill=self.config.max_backups_per_skill,
+            delete_skill=lambda name: SkillManager().delete_skill(name),
         )
         self._review_tasks: set[asyncio.Task] = set()
         self._session_turns: dict[str, int] = {}
         self._review_semaphore: asyncio.Semaphore | None = None
+        self._pending_deletes: dict[str, str] = {}
         self.last_review_status: dict[str, Any] = {"action": "none", "error": ""}
         logger.info("Auto Skills plugin loaded")
 
@@ -126,6 +129,8 @@ class AutoSkillsPlugin(Star):
                             await sync_skills_to_active_sandboxes()
                         except Exception as exc:
                             logger.warning("Auto Skills sandbox sync failed: %s", exc)
+                elif decision.action == "delete":
+                    await self._handle_review_delete(event, decision.skill_name, decision.reason)
                 self.last_review_status = {
                     "action": decision.action,
                     "skill_name": decision.skill_name,
@@ -135,6 +140,22 @@ class AutoSkillsPlugin(Star):
             except Exception as exc:
                 self.last_review_status = {"action": "error", "error": str(exc)}
                 logger.warning("Auto Skills review failed: %s", exc)
+
+    async def _handle_review_delete(self, event: AstrMessageEvent, skill_name: str, reason: str) -> None:
+        if hasattr(event, "is_admin") and not event.is_admin():
+            raise PermissionError("Only administrators can delete auto-created skills")
+        if not self.state_store.is_owned(skill_name):
+            raise PermissionError(f"Skill {skill_name} is not owned by Auto Skills")
+        pending_key = getattr(event, "unified_msg_origin", "") or "default"
+        if self._pending_deletes.get(pending_key) == skill_name:
+            self.skill_store.delete_owned(skill_name, reason or "confirmed natural language delete")
+            self._pending_deletes.pop(pending_key, None)
+            if hasattr(event, "send"):
+                await event.send(event.plain_result(f"已删除自动创建的 Skill：{skill_name}"))
+            return
+        self._pending_deletes[pending_key] = skill_name
+        if hasattr(event, "send"):
+            await event.send(event.plain_result(f"请再次确认是否删除自动创建的 Skill：{skill_name}"))
 
     @filter.command_group("autoskill")
     def autoskill(self):
@@ -189,6 +210,17 @@ class AutoSkillsPlugin(Star):
             yield event.plain_result(f"Rollback failed for {name}: {exc}")
             return
         yield event.plain_result(f"Rolled back {name} from {backup_path}")
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @autoskill.command("delete")
+    async def autoskill_delete(self, event: AstrMessageEvent, name: str):
+        """直接删除本插件自动创建并拥有的 Skill，删除前会自动备份。"""
+        try:
+            backup_path = self.skill_store.delete_owned(name, "admin command delete")
+        except Exception as exc:
+            yield event.plain_result(f"删除 {name} 失败：{exc}")
+            return
+        yield event.plain_result(f"已删除自动创建的 Skill：{name}，删除前备份：{backup_path}")
 
     async def terminate(self) -> None:
         for task in list(self._review_tasks):

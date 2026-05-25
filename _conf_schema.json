@@ -47,6 +47,12 @@
     "type": "int",
     "default": 1024
   },
+  "max_backups_per_skill": {
+    "description": "每个 Skill 最多保留的备份数",
+    "hint": "每次更新或删除前都会备份旧 SKILL.md。超过该数量时，会自动删除最旧的备份文件，并同步清理插件 state.json 里的备份路径。",
+    "type": "int",
+    "default": 10
+  },
   "auto_sync_sandbox": {
     "description": "写入后同步到活跃沙盒",
     "hint": "开启后，插件在写入或更新 Skill 后会尽力调用 AstrBot 沙盒同步逻辑，让活跃 Agent 沙盒尽快看到新 Skill。同步失败不会回滚 Skill 写入。",

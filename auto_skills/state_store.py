@@ -53,9 +53,21 @@ class StateStore:
         skills = self.load().get("skills", {})
         result = []
         for name, record in sorted(skills.items()):
-            if isinstance(record, dict) and record.get("created_by") == PLUGIN_OWNER:
+            if (
+                isinstance(record, dict)
+                and record.get("created_by") == PLUGIN_OWNER
+                and record.get("last_action") != "delete"
+            ):
                 result.append({"name": name, **record})
         return result
+
+    def update_backups(self, skill_name: str, backups: list[str]) -> None:
+        data = self.load()
+        record = data.get("skills", {}).get(skill_name)
+        if not isinstance(record, dict):
+            return
+        record["backups"] = backups
+        self.save(data)
 
     def record_write(
         self,

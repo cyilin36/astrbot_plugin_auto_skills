@@ -12,6 +12,7 @@ def test_config_uses_safe_defaults():
     assert config.review_timeout_seconds == 60
     assert config.max_skill_chars == 100000
     assert config.max_description_chars == 1024
+    assert config.max_backups_per_skill == 10
     assert config.auto_sync_sandbox is True
 
 
@@ -21,9 +22,11 @@ def test_config_coerces_invalid_numbers_to_defaults():
             "review_every_turns": "bad",
             "max_concurrent_reviews": 0,
             "review_timeout_seconds": -5,
+            "max_backups_per_skill": -1,
         }
     )
 
     assert config.review_every_turns == 10
     assert config.max_concurrent_reviews == 1
     assert config.review_timeout_seconds == 60
+    assert config.max_backups_per_skill == 10
