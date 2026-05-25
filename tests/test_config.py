@@ -1,0 +1,29 @@
+from auto_skills.config import AutoSkillsConfig
+
+
+def test_config_uses_safe_defaults():
+    config = AutoSkillsConfig.from_mapping({})
+
+    assert config.enabled is True
+    assert config.admin_only is True
+    assert config.review_every_turns == 10
+    assert config.review_provider_id == ""
+    assert config.max_concurrent_reviews == 1
+    assert config.review_timeout_seconds == 60
+    assert config.max_skill_chars == 100000
+    assert config.max_description_chars == 1024
+    assert config.auto_sync_sandbox is True
+
+
+def test_config_coerces_invalid_numbers_to_defaults():
+    config = AutoSkillsConfig.from_mapping(
+        {
+            "review_every_turns": "bad",
+            "max_concurrent_reviews": 0,
+            "review_timeout_seconds": -5,
+        }
+    )
+
+    assert config.review_every_turns == 10
+    assert config.max_concurrent_reviews == 1
+    assert config.review_timeout_seconds == 60

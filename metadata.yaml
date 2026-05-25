@@ -1,0 +1,5 @@
+name: astrbot_plugin_auto_skills
+desc: Automatically creates and updates AstrBot Skills after successful Agent turns.
+version: 0.1.0
+repo: ""
+astrbot_version: ">=4.23.1"

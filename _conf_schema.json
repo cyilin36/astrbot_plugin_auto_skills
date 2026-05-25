@@ -1,0 +1,47 @@
+{
+  "enabled": {
+    "description": "Enable automatic background skill review.",
+    "type": "bool",
+    "default": true
+  },
+  "admin_only": {
+    "description": "Only run automatic review and management commands for AstrBot administrators.",
+    "type": "bool",
+    "default": true
+  },
+  "review_every_turns": {
+    "description": "Run review after this many completed Agent turns per session.",
+    "type": "int",
+    "default": 10
+  },
+  "review_provider_id": {
+    "description": "Optional provider ID for background reviews. Leave empty to use the current session provider.",
+    "type": "string",
+    "default": ""
+  },
+  "max_concurrent_reviews": {
+    "description": "Maximum background reviews running at the same time.",
+    "type": "int",
+    "default": 1
+  },
+  "review_timeout_seconds": {
+    "description": "Timeout for one background review LLM call.",
+    "type": "int",
+    "default": 60
+  },
+  "max_skill_chars": {
+    "description": "Maximum generated SKILL.md length.",
+    "type": "int",
+    "default": 100000
+  },
+  "max_description_chars": {
+    "description": "Maximum SKILL.md frontmatter description length.",
+    "type": "int",
+    "default": 1024
+  },
+  "auto_sync_sandbox": {
+    "description": "Best-effort sync generated skills to active sandboxes after writes.",
+    "type": "bool",
+    "default": true
+  }
+}
