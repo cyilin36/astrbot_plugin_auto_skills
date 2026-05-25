@@ -60,6 +60,7 @@ def _install_astrbot_stubs(tmp_path):
     logger = SimpleNamespace(info=lambda *_a, **_k: None, warning=lambda *_a, **_k: None)
     filter_module = SimpleNamespace(
         on_agent_done=_identity_decorator,
+        on_llm_request=_identity_decorator,
         llm_tool=_identity_decorator,
         permission_type=_identity_decorator,
         command_group=_command_group,
@@ -88,6 +89,7 @@ def _install_astrbot_stubs(tmp_path):
     modules["astrbot.api.event"].AstrMessageEvent = object
     modules["astrbot.api.event"].filter = filter_module
     modules["astrbot.api.provider"].LLMResponse = object
+    modules["astrbot.api.provider"].ProviderRequest = object
     modules["astrbot.api.star"].Context = object
     modules["astrbot.api.star"].Star = _Star
     modules["astrbot.core.agent.run_context"].ContextWrapper = object
@@ -95,6 +97,8 @@ def _install_astrbot_stubs(tmp_path):
     modules["astrbot.core.computer.computer_client"].sync_skills_to_active_sandboxes = _sync_skills_to_active_sandboxes
     modules["astrbot.core.config.astrbot_config"].AstrBotConfig = dict
     modules["astrbot.core.skills.skill_manager"].SkillManager = _SkillManager
+    modules["astrbot.core.skills.skill_manager"].SkillInfo = SimpleNamespace
+    modules["astrbot.core.skills.skill_manager"].build_skills_prompt = _build_skills_prompt
     modules["astrbot.core.utils.astrbot_path"].get_astrbot_plugin_data_path = lambda: str(tmp_path / "data" / "plugin_data")
     modules["astrbot.core.utils.astrbot_path"].get_astrbot_skills_path = lambda: str(tmp_path / "data" / "skills")
     sys.modules.update(modules)
@@ -102,6 +106,10 @@ def _install_astrbot_stubs(tmp_path):
 
 async def _sync_skills_to_active_sandboxes():
     return None
+
+
+def _build_skills_prompt(skills):
+    return "## Skills\n" + "\n".join(f"- {skill.name}: {skill.description}" for skill in skills)
 
 
 def _load_plugin(tmp_path):
@@ -167,6 +175,10 @@ class FakeEvent:
 class FakeMemberEvent(FakeEvent):
     def is_admin(self):
         return False
+
+
+class OtherUmoEvent(FakeEvent):
+    unified_msg_origin = "platform:group:other"
 
 
 async def _wait_for_tasks(plugin):
@@ -247,7 +259,7 @@ def test_oral_delete_requires_admin_confirmation(monkeypatch, tmp_path):
     decision = '{"action":"delete","skill_name":"daily-report","reason":"用户要求删除"}'
     AutoSkillsPlugin = _load_plugin(tmp_path)
     plugin = AutoSkillsPlugin(FakeContext(decision), {"review_every_turns": 1, "admin_only": False})
-    plugin.skill_store.create_or_patch("daily-report", VALID_MARKDOWN, "create", "initial")
+    asyncio.run(plugin.auto_skill_create(FakeEvent(), "daily-report", VALID_MARKDOWN, "initial"))
     deleted = []
     plugin.skill_store.delete_skill = lambda name: deleted.append(name)
     event = FakeEvent()
@@ -256,7 +268,8 @@ def test_oral_delete_requires_admin_confirmation(monkeypatch, tmp_path):
     asyncio.run(_run_agent_done_and_wait(plugin, event, SimpleNamespace(), resp))
     asyncio.run(_run_agent_done_and_wait(plugin, event, SimpleNamespace(), resp))
 
-    assert deleted == ["daily-report"]
+    assert len(deleted) == 1
+    assert deleted[0].startswith("auto-")
     assert event.sent_messages is not None
     assert "请再次确认" in event.sent_messages[0]
 
@@ -266,7 +279,7 @@ def test_oral_delete_always_requires_admin_even_when_auto_review_allows_members(
     decision = '{"action":"delete","skill_name":"daily-report","reason":"用户要求删除"}'
     AutoSkillsPlugin = _load_plugin(tmp_path)
     plugin = AutoSkillsPlugin(FakeContext(decision), {"review_every_turns": 1, "admin_only": False})
-    plugin.skill_store.create_or_patch("daily-report", VALID_MARKDOWN, "create", "initial")
+    asyncio.run(plugin.auto_skill_create(FakeEvent(), "daily-report", VALID_MARKDOWN, "initial"))
     deleted = []
     plugin.skill_store.delete_skill = lambda name: deleted.append(name)
     event = FakeMemberEvent()
@@ -311,14 +324,17 @@ def test_llm_tool_create_skill_writes_owned_skill(monkeypatch, tmp_path):
     )
 
     assert "已创建" in result
-    assert plugin.state_store.is_owned("daily-report") is True
+    skills = plugin.state_store.list_skills(FakeEvent.unified_msg_origin)
+    assert len(skills) == 1
+    assert skills[0]["display_name"] == "daily-report"
+    assert skills[0]["name"].startswith("auto-")
 
 
 def test_llm_tool_patch_skill_updates_owned_skill(monkeypatch, tmp_path):
     monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
     AutoSkillsPlugin = _load_plugin(tmp_path)
     plugin = AutoSkillsPlugin(FakeContext(), {"admin_only": False})
-    plugin.skill_store.create_or_patch("daily-report", VALID_MARKDOWN, "create", "initial")
+    asyncio.run(plugin.auto_skill_create(FakeEvent(), "daily-report", VALID_MARKDOWN, "initial"))
     updated = VALID_MARKDOWN.replace("Body", "Updated Body")
 
     result = asyncio.run(
@@ -331,7 +347,9 @@ def test_llm_tool_patch_skill_updates_owned_skill(monkeypatch, tmp_path):
     )
 
     assert "已更新" in result
-    record = plugin.state_store.get_skill("daily-report")
+    internal_name = plugin.state_store.resolve_skill_name(FakeEvent.unified_msg_origin, "daily-report")
+    assert internal_name is not None
+    record = plugin.state_store.get_skill(internal_name)
     assert record is not None
     assert record["last_action"] == "patch"
     assert len(record["backups"]) == 1
@@ -341,7 +359,7 @@ def test_llm_tool_delete_request_uses_confirmation_flow(monkeypatch, tmp_path):
     monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
     AutoSkillsPlugin = _load_plugin(tmp_path)
     plugin = AutoSkillsPlugin(FakeContext(), {"admin_only": False})
-    plugin.skill_store.create_or_patch("daily-report", VALID_MARKDOWN, "create", "initial")
+    asyncio.run(plugin.auto_skill_create(FakeEvent(), "daily-report", VALID_MARKDOWN, "initial"))
     deleted = []
     plugin.skill_store.delete_skill = lambda name: deleted.append(name)
     event = FakeEvent()
@@ -351,4 +369,38 @@ def test_llm_tool_delete_request_uses_confirmation_flow(monkeypatch, tmp_path):
 
     assert "请再次确认" in first
     assert "已删除" in second
-    assert deleted == ["daily-report"]
+    assert len(deleted) == 1
+    assert deleted[0].startswith("auto-")
+
+
+def test_llm_request_injects_only_current_umo_skills(monkeypatch, tmp_path):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    AutoSkillsPlugin = _load_plugin(tmp_path)
+    plugin = AutoSkillsPlugin(FakeContext(), {"admin_only": False})
+    asyncio.run(plugin.auto_skill_create(FakeEvent(), "daily-report", VALID_MARKDOWN, "initial"))
+
+    current_req = SimpleNamespace(system_prompt="base")
+    other_req = SimpleNamespace(system_prompt="base")
+    asyncio.run(plugin.on_llm_request(FakeEvent(), current_req))
+    asyncio.run(plugin.on_llm_request(OtherUmoEvent(), other_req))
+
+    assert "## Skills" in current_req.system_prompt
+    assert "Write structured daily reports" in current_req.system_prompt
+    assert other_req.system_prompt == "base"
+
+
+def test_same_display_name_is_isolated_by_umo(monkeypatch, tmp_path):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    AutoSkillsPlugin = _load_plugin(tmp_path)
+    plugin = AutoSkillsPlugin(FakeContext(), {"admin_only": False})
+
+    asyncio.run(plugin.auto_skill_create(FakeEvent(), "daily-report", VALID_MARKDOWN, "current"))
+    asyncio.run(plugin.auto_skill_create(OtherUmoEvent(), "daily-report", VALID_MARKDOWN, "other"))
+
+    current = plugin.state_store.list_skills(FakeEvent.unified_msg_origin)
+    other = plugin.state_store.list_skills(OtherUmoEvent.unified_msg_origin)
+    assert len(current) == 1
+    assert len(other) == 1
+    assert current[0]["display_name"] == "daily-report"
+    assert other[0]["display_name"] == "daily-report"
+    assert current[0]["name"] != other[0]["name"]

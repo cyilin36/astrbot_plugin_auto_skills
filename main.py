@@ -1,18 +1,20 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from pathlib import Path
+import re
 from typing import Any
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, filter
-from astrbot.api.provider import LLMResponse
+from astrbot.api.provider import LLMResponse, ProviderRequest
 from astrbot.api.star import Context, Star
 from astrbot.core.agent.run_context import ContextWrapper
 from astrbot.core.astr_agent_context import AstrAgentContext
 from astrbot.core.computer.computer_client import sync_skills_to_active_sandboxes
 from astrbot.core.config.astrbot_config import AstrBotConfig
-from astrbot.core.skills.skill_manager import SkillManager
+from astrbot.core.skills.skill_manager import SkillInfo, SkillManager, build_skills_prompt
 from astrbot.core.utils.astrbot_path import get_astrbot_plugin_data_path, get_astrbot_skills_path
 
 from .auto_skills.config import AutoSkillsConfig
@@ -24,6 +26,9 @@ from .auto_skills.review_runner import (
 )
 from .auto_skills.skill_store import SkillStore
 from .auto_skills.state_store import StateStore
+
+
+_SKILL_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 
 
 class AutoSkillsPlugin(Star):
@@ -41,6 +46,7 @@ class AutoSkillsPlugin(Star):
             max_skill_chars=self.config.max_skill_chars,
             max_description_chars=self.config.max_description_chars,
             max_backups_per_skill=self.config.max_backups_per_skill,
+            active_on_write=self.config.global_activate_generated_skills,
             delete_skill=lambda name: SkillManager().delete_skill(name),
         )
         self._review_tasks: set[asyncio.Task] = set()
@@ -50,6 +56,89 @@ class AutoSkillsPlugin(Star):
         self.last_review_status: dict[str, Any] = {"action": "none", "error": ""}
         logger.info("Auto Skills plugin loaded")
 
+    def _umo(self, event: AstrMessageEvent) -> str:
+        return getattr(event, "unified_msg_origin", "") or "default"
+
+    def _normalize_display_name(self, skill_name: str) -> str:
+        normalized = re.sub(r"[^a-z0-9._-]+", "-", skill_name.strip().lower()).strip(".-_")
+        if not normalized:
+            normalized = "skill"
+        if not normalized[0].isalnum():
+            normalized = f"skill-{normalized}"
+        return normalized[:50].rstrip(".-_") or "skill"
+
+    def _internal_skill_name(self, umo: str, display_name: str) -> str:
+        umo_hash = hashlib.sha256(umo.encode("utf-8")).hexdigest()[:8]
+        slug = self._normalize_display_name(display_name)
+        internal = f"auto-{umo_hash}-{slug}"[:64].rstrip(".-_")
+        return internal if _SKILL_NAME_RE.fullmatch(internal) else f"auto-{umo_hash}-skill"
+
+    def _resolve_current_skill_name(self, event: AstrMessageEvent, skill_name: str) -> str | None:
+        return self.state_store.resolve_skill_name(self._umo(event), skill_name)
+
+    def _rewrite_frontmatter_name(self, markdown: str, skill_name: str) -> str:
+        lines = markdown.splitlines()
+        if not lines or lines[0].strip() != "---":
+            return markdown
+        end_idx = None
+        for index in range(1, len(lines)):
+            if lines[index].strip() == "---":
+                end_idx = index
+                break
+        if end_idx is None:
+            return markdown
+        for index in range(1, end_idx):
+            if lines[index].lstrip().startswith("name:"):
+                lines[index] = f"name: {skill_name}"
+                return "\n".join(lines) + ("\n" if markdown.endswith("\n") else "")
+        lines.insert(1, f"name: {skill_name}")
+        return "\n".join(lines) + ("\n" if markdown.endswith("\n") else "")
+
+    def _skill_description(self, skill_name: str) -> str:
+        skill_md = Path(get_astrbot_skills_path()) / skill_name / "SKILL.md"
+        if not skill_md.exists():
+            return "Read SKILL.md for details."
+        lines = skill_md.read_text(encoding="utf-8").splitlines()
+        if not lines or lines[0].strip() != "---":
+            return "Read SKILL.md for details."
+        for line in lines[1:]:
+            if line.strip() == "---":
+                break
+            if line.lstrip().startswith("description:"):
+                return line.split(":", 1)[1].strip().strip('"\'') or "Read SKILL.md for details."
+        return "Read SKILL.md for details."
+
+    def _current_umo_skill_infos(self, event: AstrMessageEvent) -> list[SkillInfo]:
+        skills = []
+        for record in self.state_store.list_skills(self._umo(event)):
+            name = str(record.get("name") or "")
+            if not name:
+                continue
+            path = Path(get_astrbot_skills_path()) / name / "SKILL.md"
+            if not path.exists():
+                continue
+            skills.append(
+                SkillInfo(
+                    name=name,
+                    description=self._skill_description(name),
+                    path=str(path),
+                    active=True,
+                    source_type="local_only",
+                    source_label="auto-skills-umo",
+                )
+            )
+        return skills
+
+    @filter.on_llm_request()
+    async def on_llm_request(self, event: AstrMessageEvent, req: ProviderRequest) -> None:
+        skills = self._current_umo_skill_infos(event)
+        if not skills:
+            return None
+        if req.system_prompt is None:
+            req.system_prompt = ""
+        req.system_prompt += f"\n{build_skills_prompt(skills)}\n"
+        return None
+
     def _should_review(self, event: AstrMessageEvent, resp: LLMResponse) -> bool:
         if not self.config.enabled:
             return False
@@ -57,7 +146,7 @@ class AutoSkillsPlugin(Star):
             return False
         if not str(getattr(resp, "completion_text", "") or "").strip():
             return False
-        umo = getattr(event, "unified_msg_origin", "") or "default"
+        umo = self._umo(event)
         count = self._session_turns.get(umo, 0) + 1
         self._session_turns[umo] = count
         return count % self.config.review_every_turns == 0
@@ -102,7 +191,7 @@ class AutoSkillsPlugin(Star):
                     assistant_response=str(getattr(resp, "completion_text", "") or ""),
                     tool_summaries=[],
                     active_skills=active_skills,
-                    owned_skills=self.state_store.list_skills(),
+                    owned_skills=self.state_store.list_skills(self._umo(event)),
                 )
                 provider_id = self.config.review_provider_id
                 if not provider_id and hasattr(self.context, "get_using_provider"):
@@ -118,11 +207,17 @@ class AutoSkillsPlugin(Star):
                 )
                 decision = parse_review_decision(str(getattr(llm_resp, "completion_text", "") or ""))
                 if decision.action in {"create", "patch"}:
+                    display_name = self._normalize_display_name(decision.skill_name)
+                    internal_name = self._resolve_current_skill_name(event, display_name) or self._internal_skill_name(
+                        self._umo(event), display_name
+                    )
                     self.skill_store.create_or_patch(
-                        decision.skill_name,
-                        decision.skill_markdown,
+                        internal_name,
+                        self._rewrite_frontmatter_name(decision.skill_markdown, internal_name),
                         decision.action,
                         decision.reason,
+                        umo=self._umo(event),
+                        display_name=display_name,
                     )
                     if self.config.auto_sync_sandbox:
                         try:
@@ -144,16 +239,17 @@ class AutoSkillsPlugin(Star):
     async def _handle_review_delete(self, event: AstrMessageEvent, skill_name: str, reason: str) -> None:
         if hasattr(event, "is_admin") and not event.is_admin():
             raise PermissionError("Only administrators can delete auto-created skills")
-        if not self.state_store.is_owned(skill_name):
+        internal_name = self._resolve_current_skill_name(event, skill_name)
+        if not internal_name:
             raise PermissionError(f"Skill {skill_name} is not owned by Auto Skills")
         pending_key = getattr(event, "unified_msg_origin", "") or "default"
-        if self._pending_deletes.get(pending_key) == skill_name:
-            self.skill_store.delete_owned(skill_name, reason or "confirmed natural language delete")
+        if self._pending_deletes.get(pending_key) == internal_name:
+            self.skill_store.delete_owned(internal_name, reason or "confirmed natural language delete")
             self._pending_deletes.pop(pending_key, None)
             if hasattr(event, "send"):
                 await event.send(event.plain_result(f"已删除自动创建的 Skill：{skill_name}"))
             return
-        self._pending_deletes[pending_key] = skill_name
+        self._pending_deletes[pending_key] = internal_name
         if hasattr(event, "send"):
             await event.send(event.plain_result(f"请再次确认是否删除自动创建的 Skill：{skill_name}"))
 
@@ -186,7 +282,16 @@ class AutoSkillsPlugin(Star):
         if not self._admin_allowed(event):
             return "只有管理员可以创建自动 Skill。"
         try:
-            self.skill_store.create_or_patch(skill_name, skill_markdown, "create", reason)
+            display_name = self._normalize_display_name(skill_name)
+            internal_name = self._internal_skill_name(self._umo(event), display_name)
+            self.skill_store.create_or_patch(
+                internal_name,
+                self._rewrite_frontmatter_name(skill_markdown, internal_name),
+                "create",
+                reason,
+                umo=self._umo(event),
+                display_name=display_name,
+            )
             await self._sync_after_tool_write()
         except Exception as exc:
             return f"创建自动 Skill {skill_name} 失败：{exc}"
@@ -210,7 +315,18 @@ class AutoSkillsPlugin(Star):
         if not self._admin_allowed(event):
             return "只有管理员可以更新自动 Skill。"
         try:
-            self.skill_store.create_or_patch(skill_name, skill_markdown, "patch", reason)
+            internal_name = self._resolve_current_skill_name(event, skill_name)
+            if not internal_name:
+                raise PermissionError(f"Skill {skill_name} is not owned by current UMO")
+            record = self.state_store.get_skill(internal_name) or {}
+            self.skill_store.create_or_patch(
+                internal_name,
+                self._rewrite_frontmatter_name(skill_markdown, internal_name),
+                "patch",
+                reason,
+                umo=self._umo(event),
+                display_name=str(record.get("display_name") or skill_name),
+            )
             await self._sync_after_tool_write()
         except Exception as exc:
             return f"更新自动 Skill {skill_name} 失败：{exc}"
@@ -233,7 +349,8 @@ class AutoSkillsPlugin(Star):
             return "只有管理员可以删除自动 Skill。"
         try:
             pending_key = getattr(event, "unified_msg_origin", "") or "default"
-            confirmed = self._pending_deletes.get(pending_key) == skill_name
+            internal_name = self._resolve_current_skill_name(event, skill_name)
+            confirmed = bool(internal_name and self._pending_deletes.get(pending_key) == internal_name)
             await self._handle_review_delete(event, skill_name, reason)
         except Exception as exc:
             return f"删除自动 Skill {skill_name} 失败：{exc}"

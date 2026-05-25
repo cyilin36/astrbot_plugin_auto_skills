@@ -14,6 +14,7 @@ def test_config_uses_safe_defaults():
     assert config.max_description_chars == 1024
     assert config.max_backups_per_skill == 10
     assert config.auto_sync_sandbox is True
+    assert config.global_activate_generated_skills is False
 
 
 def test_config_coerces_invalid_numbers_to_defaults():

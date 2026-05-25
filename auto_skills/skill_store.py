@@ -49,6 +49,7 @@ class SkillStore:
         max_skill_chars: int = 100000,
         max_description_chars: int = 1024,
         max_backups_per_skill: int = 10,
+        active_on_write: bool = True,
     ):
         self.skills_root = Path(skills_root)
         self.state_store = state_store
@@ -58,6 +59,7 @@ class SkillStore:
         self.max_skill_chars = max_skill_chars
         self.max_description_chars = max_description_chars
         self.max_backups_per_skill = max_backups_per_skill if max_backups_per_skill > 0 else 10
+        self.active_on_write = active_on_write
 
     def validate(self, skill_name: str, markdown: str) -> ValidationResult:
         if not _SKILL_NAME_RE.fullmatch(skill_name):
@@ -123,7 +125,16 @@ class SkillStore:
                 pass
         self.state_store.update_backups(skill_name, keep)
 
-    def create_or_patch(self, skill_name: str, markdown: str, action: str, reason: str) -> None:
+    def create_or_patch(
+        self,
+        skill_name: str,
+        markdown: str,
+        action: str,
+        reason: str,
+        *,
+        umo: str = "",
+        display_name: str | None = None,
+    ) -> None:
         validation = self.validate(skill_name, markdown)
         if not validation.ok:
             raise ValueError(validation.error)
@@ -139,19 +150,22 @@ class SkillStore:
         backup_path = self._backup_existing(skill_name, skill_md)
         self._atomic_write(skill_md, markdown)
         if self.set_active is not None:
-            self.set_active(skill_name, True)
+            self.set_active(skill_name, self.active_on_write)
         self.state_store.record_write(
             skill_name=skill_name,
             content_hash=_sha256_text(markdown),
             action=action,
             reason=reason,
             backup_path=backup_path,
+            umo=umo,
+            display_name=display_name,
         )
         self._prune_backups(skill_name)
 
     def delete_owned(self, skill_name: str, reason: str) -> Path | None:
         if not self.state_store.is_owned(skill_name):
             raise PermissionError(f"Skill {skill_name} is not owned by this plugin")
+        record = self.state_store.get_skill(skill_name) or {}
         skill_md = self._skill_md(skill_name)
         backup_path = self._backup_existing(skill_name, skill_md)
         if self.delete_skill is not None:
@@ -169,6 +183,8 @@ class SkillStore:
             action="delete",
             reason=reason,
             backup_path=backup_path,
+            umo=str(record.get("umo") or ""),
+            display_name=str(record.get("display_name") or skill_name),
         )
         self._prune_backups(skill_name)
         return backup_path

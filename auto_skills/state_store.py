@@ -45,11 +45,13 @@ class StateStore:
         record = self.load().get("skills", {}).get(skill_name)
         return record if isinstance(record, dict) else None
 
-    def is_owned(self, skill_name: str) -> bool:
+    def is_owned(self, skill_name: str, umo: str | None = None) -> bool:
         record = self.get_skill(skill_name)
-        return bool(record and record.get("created_by") == PLUGIN_OWNER)
+        if not record or record.get("created_by") != PLUGIN_OWNER:
+            return False
+        return umo is None or record.get("umo") == umo
 
-    def list_skills(self) -> list[dict[str, Any]]:
+    def list_skills(self, umo: str | None = None) -> list[dict[str, Any]]:
         skills = self.load().get("skills", {})
         result = []
         for name, record in sorted(skills.items()):
@@ -57,9 +59,19 @@ class StateStore:
                 isinstance(record, dict)
                 and record.get("created_by") == PLUGIN_OWNER
                 and record.get("last_action") != "delete"
+                and (umo is None or record.get("umo") == umo)
             ):
                 result.append({"name": name, **record})
         return result
+
+    def resolve_skill_name(self, umo: str, name: str) -> str | None:
+        record = self.get_skill(name)
+        if record and record.get("created_by") == PLUGIN_OWNER and record.get("umo") == umo:
+            return name
+        for skill in self.list_skills(umo):
+            if skill.get("display_name") == name:
+                return str(skill["name"])
+        return None
 
     def update_backups(self, skill_name: str, backups: list[str]) -> None:
         data = self.load()
@@ -76,6 +88,8 @@ class StateStore:
         action: str,
         reason: str,
         backup_path: str | Path | None,
+        umo: str = "",
+        display_name: str | None = None,
     ) -> None:
         data = self.load()
         skills = data.setdefault("skills", {})
@@ -88,6 +102,8 @@ class StateStore:
         version = int(previous.get("version") or 0) + 1
         skills[skill_name] = {
             "created_by": PLUGIN_OWNER,
+            "umo": umo,
+            "display_name": display_name or previous.get("display_name") or skill_name,
             "content_hash": content_hash,
             "version": version,
             "last_action": action,

@@ -59,5 +59,11 @@
     "hint": "开启后，插件在写入或更新 Skill 后会尽力调用 AstrBot 沙盒同步逻辑，让活跃 Agent 沙盒尽快看到新 Skill。同步失败不会回滚 Skill 写入。",
     "type": "bool",
     "default": true
+  },
+  "global_activate_generated_skills": {
+    "description": "全局激活自动生成的 Skill",
+    "hint": "默认关闭。关闭时，自动生成的 Skill 只会通过当前 UMO 会话动态注入，不会进入 AstrBot 全局 active Skills，避免其他会话看到或使用。",
+    "type": "bool",
+    "default": false
   }
 }
