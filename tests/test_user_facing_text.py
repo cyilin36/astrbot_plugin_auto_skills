@@ -36,3 +36,21 @@ def test_autoskill_commands_have_docstrings():
     assert "查看 Auto Skills 插件状态" in source
     assert "列出本插件自动创建并拥有的 Skill" in source
     assert "直接删除本插件自动创建并拥有的 Skill" in source
+
+
+def test_auto_skill_llm_tools_have_docstrings():
+    source = Path("main.py").read_text(encoding="utf-8")
+
+    for tool_name in [
+        "auto_skill_create",
+        "auto_skill_patch",
+        "auto_skill_delete_request",
+    ]:
+        assert f'@filter.llm_tool(name="{tool_name}")' in source
+        assert f"def {tool_name}" in source
+    assert "创建一个新的 AstrBot Skill" in source
+    assert "更新本插件已经创建并拥有的 AstrBot Skill" in source
+    assert "请求删除本插件自动创建并拥有的 AstrBot Skill" in source
+    assert "skill_name(string):" in source
+    assert "skill_markdown(string):" in source
+    assert "reason(string):" in source

@@ -157,6 +157,90 @@ class AutoSkillsPlugin(Star):
         if hasattr(event, "send"):
             await event.send(event.plain_result(f"请再次确认是否删除自动创建的 Skill：{skill_name}"))
 
+    def _admin_allowed(self, event: AstrMessageEvent) -> bool:
+        return bool(hasattr(event, "is_admin") and event.is_admin())
+
+    async def _sync_after_tool_write(self) -> None:
+        if not self.config.auto_sync_sandbox:
+            return
+        try:
+            await sync_skills_to_active_sandboxes()
+        except Exception as exc:
+            logger.warning("Auto Skills sandbox sync failed: %s", exc)
+
+    @filter.llm_tool(name="auto_skill_create")
+    async def auto_skill_create(
+        self,
+        event: AstrMessageEvent,
+        skill_name: str,
+        skill_markdown: str,
+        reason: str,
+    ) -> str:
+        """创建一个新的 AstrBot Skill。
+
+        Args:
+            skill_name(string): Skill 名称，必须与 SKILL.md frontmatter 中的 name 一致。
+            skill_markdown(string): 完整的 SKILL.md 内容，必须包含 YAML frontmatter 和正文。
+            reason(string): 创建这个 Skill 的原因。
+        """
+        if not self._admin_allowed(event):
+            return "只有管理员可以创建自动 Skill。"
+        try:
+            self.skill_store.create_or_patch(skill_name, skill_markdown, "create", reason)
+            await self._sync_after_tool_write()
+        except Exception as exc:
+            return f"创建自动 Skill {skill_name} 失败：{exc}"
+        return f"已创建并启用自动 Skill：{skill_name}"
+
+    @filter.llm_tool(name="auto_skill_patch")
+    async def auto_skill_patch(
+        self,
+        event: AstrMessageEvent,
+        skill_name: str,
+        skill_markdown: str,
+        reason: str,
+    ) -> str:
+        """更新本插件已经创建并拥有的 AstrBot Skill。
+
+        Args:
+            skill_name(string): 要更新的 Skill 名称。
+            skill_markdown(string): 更新后的完整 SKILL.md 内容，必须包含 YAML frontmatter 和正文。
+            reason(string): 更新这个 Skill 的原因。
+        """
+        if not self._admin_allowed(event):
+            return "只有管理员可以更新自动 Skill。"
+        try:
+            self.skill_store.create_or_patch(skill_name, skill_markdown, "patch", reason)
+            await self._sync_after_tool_write()
+        except Exception as exc:
+            return f"更新自动 Skill {skill_name} 失败：{exc}"
+        return f"已更新并启用自动 Skill：{skill_name}"
+
+    @filter.llm_tool(name="auto_skill_delete_request")
+    async def auto_skill_delete_request(
+        self,
+        event: AstrMessageEvent,
+        skill_name: str,
+        reason: str,
+    ) -> str:
+        """请求删除本插件自动创建并拥有的 AstrBot Skill。
+
+        Args:
+            skill_name(string): 要删除的 Skill 名称。
+            reason(string): 请求删除这个 Skill 的原因。
+        """
+        if not self._admin_allowed(event):
+            return "只有管理员可以删除自动 Skill。"
+        try:
+            pending_key = getattr(event, "unified_msg_origin", "") or "default"
+            confirmed = self._pending_deletes.get(pending_key) == skill_name
+            await self._handle_review_delete(event, skill_name, reason)
+        except Exception as exc:
+            return f"删除自动 Skill {skill_name} 失败：{exc}"
+        if confirmed:
+            return f"已删除自动创建的 Skill：{skill_name}"
+        return f"请再次确认是否删除自动创建的 Skill：{skill_name}"
+
     @filter.command_group("autoskill")
     def autoskill(self):
         """管理 Auto Skills 自动创建的 AstrBot Skills。"""

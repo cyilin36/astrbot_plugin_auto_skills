@@ -60,6 +60,7 @@ def _install_astrbot_stubs(tmp_path):
     logger = SimpleNamespace(info=lambda *_a, **_k: None, warning=lambda *_a, **_k: None)
     filter_module = SimpleNamespace(
         on_agent_done=_identity_decorator,
+        llm_tool=_identity_decorator,
         permission_type=_identity_decorator,
         command_group=_command_group,
         PermissionType=SimpleNamespace(ADMIN="admin"),
@@ -275,3 +276,79 @@ def test_oral_delete_always_requires_admin_even_when_auto_review_allows_members(
 
     assert deleted == []
     assert plugin.last_review_status["action"] == "error"
+
+
+def test_llm_tool_create_skill_requires_admin(monkeypatch, tmp_path):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    AutoSkillsPlugin = _load_plugin(tmp_path)
+    plugin = AutoSkillsPlugin(FakeContext(), {"admin_only": False})
+
+    result = asyncio.run(
+        plugin.auto_skill_create(
+            FakeMemberEvent(),
+            "daily-report",
+            VALID_MARKDOWN,
+            "用户要求保存流程",
+        )
+    )
+
+    assert "只有管理员" in result
+    assert not plugin.state_store.is_owned("daily-report")
+
+
+def test_llm_tool_create_skill_writes_owned_skill(monkeypatch, tmp_path):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    AutoSkillsPlugin = _load_plugin(tmp_path)
+    plugin = AutoSkillsPlugin(FakeContext(), {"admin_only": False})
+
+    result = asyncio.run(
+        plugin.auto_skill_create(
+            FakeEvent(),
+            "daily-report",
+            VALID_MARKDOWN,
+            "用户要求保存流程",
+        )
+    )
+
+    assert "已创建" in result
+    assert plugin.state_store.is_owned("daily-report") is True
+
+
+def test_llm_tool_patch_skill_updates_owned_skill(monkeypatch, tmp_path):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    AutoSkillsPlugin = _load_plugin(tmp_path)
+    plugin = AutoSkillsPlugin(FakeContext(), {"admin_only": False})
+    plugin.skill_store.create_or_patch("daily-report", VALID_MARKDOWN, "create", "initial")
+    updated = VALID_MARKDOWN.replace("Body", "Updated Body")
+
+    result = asyncio.run(
+        plugin.auto_skill_patch(
+            FakeEvent(),
+            "daily-report",
+            updated,
+            "用户要求更新流程",
+        )
+    )
+
+    assert "已更新" in result
+    record = plugin.state_store.get_skill("daily-report")
+    assert record is not None
+    assert record["last_action"] == "patch"
+    assert len(record["backups"]) == 1
+
+
+def test_llm_tool_delete_request_uses_confirmation_flow(monkeypatch, tmp_path):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    AutoSkillsPlugin = _load_plugin(tmp_path)
+    plugin = AutoSkillsPlugin(FakeContext(), {"admin_only": False})
+    plugin.skill_store.create_or_patch("daily-report", VALID_MARKDOWN, "create", "initial")
+    deleted = []
+    plugin.skill_store.delete_skill = lambda name: deleted.append(name)
+    event = FakeEvent()
+
+    first = asyncio.run(plugin.auto_skill_delete_request(event, "daily-report", "用户要求删除"))
+    second = asyncio.run(plugin.auto_skill_delete_request(event, "daily-report", "用户确认删除"))
+
+    assert "请再次确认" in first
+    assert "已删除" in second
+    assert deleted == ["daily-report"]
