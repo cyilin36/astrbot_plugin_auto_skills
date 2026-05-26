@@ -33,8 +33,10 @@ _PROTECTED_TOOL_NAMES = {
     "astrbot_execute_python",
     "astrbot_execute_ipython",
     "astrbot_execute_shell",
+    "astrbot_file_read_tool",
     "astrbot_file_write_tool",
     "astrbot_file_edit_tool",
+    "astrbot_grep_tool",
 }
 
 
@@ -139,11 +141,10 @@ class AutoSkillsPlugin(Star):
     def _managed_skill_storage_policy(self) -> str:
         return (
             "## Managed Skill Storage Policy\n\n"
-            "`data/skills/` is AstrBot managed Skill storage. You may read "
-            "`data/skills/**/SKILL.md` to understand existing Skills, but you MUST NOT "
-            "directly create, edit, overwrite, rename, move, or delete files or directories "
-            "under `data/skills/` with generic filesystem tools, shell commands, Python code, "
-            "or any other direct file operation.\n\n"
+            "`data/skills/` is AstrBot managed Skill storage. You MUST NOT directly read, "
+            "search, create, edit, overwrite, rename, move, or delete files or directories "
+            "under `data/skills/` with generic filesystem tools, grep tools, shell commands, "
+            "Python code, or any other direct file operation.\n\n"
             "For AstrBot Skill lifecycle changes, use only the Auto Skills tools: "
             "`auto_skill_create` to create, `auto_skill_patch` to update, and "
             "`auto_skill_delete_request` to request deletion. If a user asks for direct "
@@ -206,6 +207,12 @@ class AutoSkillsPlugin(Star):
         elif tool_name == "astrbot_file_edit_tool":
             tool_args.clear()
             tool_args.update({"path": "", "old": "", "new": "", "replace_all": False})
+        elif tool_name == "astrbot_file_read_tool":
+            tool_args.clear()
+            tool_args.update({"path": ""})
+        elif tool_name == "astrbot_grep_tool":
+            tool_args.clear()
+            tool_args.update({"path": "", "pattern": "", "include": ""})
 
     @filter.on_llm_request()
     async def on_llm_request(self, event: AstrMessageEvent, req: ProviderRequest) -> None:
@@ -233,7 +240,12 @@ class AutoSkillsPlugin(Star):
             blocked = self._mentions_managed_skills(tool_args.get("code"))
         elif tool_name == "astrbot_execute_shell":
             blocked = self._mentions_managed_skills(tool_args.get("command"))
-        elif tool_name in {"astrbot_file_write_tool", "astrbot_file_edit_tool"}:
+        elif tool_name in {
+            "astrbot_file_read_tool",
+            "astrbot_file_write_tool",
+            "astrbot_file_edit_tool",
+            "astrbot_grep_tool",
+        }:
             blocked = self._path_targets_managed_skills(tool_args.get("path"))
         if blocked:
             self._block_tool_args(tool_name, tool_args)

@@ -588,6 +588,29 @@ def test_tool_guard_blocks_file_write_or_edit_to_data_skills(monkeypatch, tmp_pa
         assert args["path"] == ""
 
 
+def test_tool_guard_blocks_file_read_access_to_data_skills(monkeypatch, tmp_path):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    AutoSkillsPlugin = _load_plugin(tmp_path)
+    plugin = AutoSkillsPlugin(FakeContext(), {"admin_only": False})
+    tool, args = _tool("astrbot_file_read_tool", {"path": "/AstrBot/data/skills/demo/SKILL.md"})
+
+    asyncio.run(plugin.on_using_llm_tool(FakeEvent(), tool, args))
+
+    assert args["path"] == ""
+
+
+def test_tool_guard_blocks_grep_access_to_data_skills(monkeypatch, tmp_path):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    AutoSkillsPlugin = _load_plugin(tmp_path)
+    plugin = AutoSkillsPlugin(FakeContext(), {"admin_only": False})
+    tool, args = _tool("astrbot_grep_tool", {"path": "/AstrBot/data/skills", "pattern": "v我50", "include": "*.md"})
+
+    asyncio.run(plugin.on_using_llm_tool(FakeEvent(), tool, args))
+
+    assert args["path"] == ""
+    assert args["pattern"] == ""
+
+
 def test_same_display_name_is_isolated_by_umo(monkeypatch, tmp_path):
     monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
     AutoSkillsPlugin = _load_plugin(tmp_path)
