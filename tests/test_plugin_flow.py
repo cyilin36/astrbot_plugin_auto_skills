@@ -1,5 +1,6 @@
 import asyncio
 import importlib.util
+import re
 import sys
 import types
 from pathlib import Path
@@ -310,6 +311,7 @@ def test_autoskill_list_shows_only_current_umo_skills(monkeypatch, tmp_path):
 
     results = asyncio.run(run_command())
 
+    assert f"daily-report -> {current_internal}" in results[0]
     assert current_internal in results[0]
     assert other_internal not in results[0]
 
@@ -470,7 +472,7 @@ def test_llm_tool_create_skill_writes_owned_skill(monkeypatch, tmp_path):
     skills = plugin.state_store.list_skills(FakeEvent.unified_msg_origin)
     assert len(skills) == 1
     assert skills[0]["display_name"] == "daily-report"
-    assert skills[0]["name"].startswith("auto-")
+    assert re.fullmatch(r"auto-private-user-[0-9a-f]{8}-daily-report", skills[0]["name"])
 
 
 def test_llm_tool_patch_skill_updates_owned_skill(monkeypatch, tmp_path):
@@ -625,4 +627,6 @@ def test_same_display_name_is_isolated_by_umo(monkeypatch, tmp_path):
     assert len(other) == 1
     assert current[0]["display_name"] == "daily-report"
     assert other[0]["display_name"] == "daily-report"
+    assert re.fullmatch(r"auto-private-user-[0-9a-f]{8}-daily-report", current[0]["name"])
+    assert re.fullmatch(r"auto-group-other-[0-9a-f]{8}-daily-report", other[0]["name"])
     assert current[0]["name"] != other[0]["name"]

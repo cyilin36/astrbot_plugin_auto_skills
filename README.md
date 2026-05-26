@@ -22,6 +22,16 @@ Then reload plugins from AstrBot WebUI or restart AstrBot.
 - Saves plugin state and backups under `data/plugin_data/astrbot_plugin_auto_skills`.
 - Only auto-updates Skills created by this plugin.
 
+## Skill 命名规则
+
+新生成的 Skill 会使用人类更容易识别的内部名：`auto-<umo_label>-<umo_hash>-<display_slug>`。
+
+- `umo_label` 会从 UMO 中提取短标签，例如 `Alice:GroupMessage:374027358` 会变成 `group-374027358`，`Alice:FriendMessage:2491577028` 会变成 `friend-2491577028`。
+- `umo_hash` 是 UMO 的 8 位短哈希，用于降低标签重复或格式异常时的冲突风险。
+- `display_slug` 是模型或用户提供的 Skill 名称规范化后的可读短名。
+
+例如 `Alice:GroupMessage:374027358` 中创建的 `daily-report` 会生成类似 `auto-group-374027358-50c48fe8-daily-report` 的目录名。旧版本已经生成的 Skill 不会自动重命名，避免破坏已有文件、备份和状态记录。
+
 ## 使用后的副作用与限制
 
 启用本插件后，`data/skills/` 会被视为 AstrBot 的受控 Skill 存储区。为了维持 UMO 隔离，Agent 不应再通过通用文件读取、grep、Shell、Python 或其他直接文件操作访问、搜索、创建、编辑、覆盖、移动、重命名或删除 `data/skills/` 下的内容。

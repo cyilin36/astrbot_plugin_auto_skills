@@ -76,11 +76,31 @@ class AutoSkillsPlugin(Star):
             normalized = f"skill-{normalized}"
         return normalized[:50].rstrip(".-_") or "skill"
 
+    def _umo_label(self, umo: str) -> str:
+        parts = [part for part in str(umo or "").split(":") if part]
+        label = "umo"
+        if len(parts) >= 3 and parts[1].lower().endswith("message"):
+            message_type = parts[1].lower().removesuffix("message") or "message"
+            label = f"{message_type}-{parts[2]}"
+        elif len(parts) >= 3:
+            label = f"{parts[1]}-{parts[-1]}"
+        elif parts:
+            label = parts[-1]
+        normalized = self._normalize_display_name(label)
+        return normalized[:24].rstrip(".-_") or "umo"
+
     def _internal_skill_name(self, umo: str, display_name: str) -> str:
         umo_hash = hashlib.sha256(umo.encode("utf-8")).hexdigest()[:8]
+        label = self._umo_label(umo)
         slug = self._normalize_display_name(display_name)
-        internal = f"auto-{umo_hash}-{slug}"[:64].rstrip(".-_")
-        return internal if _SKILL_NAME_RE.fullmatch(internal) else f"auto-{umo_hash}-skill"
+        prefix = f"auto-{label}-{umo_hash}-"
+        max_slug_chars = 64 - len(prefix)
+        if max_slug_chars < 1:
+            label = label[:12].rstrip(".-_") or "umo"
+            prefix = f"auto-{label}-{umo_hash}-"
+            max_slug_chars = 64 - len(prefix)
+        internal = f"{prefix}{slug[:max_slug_chars].rstrip('.-_') or 'skill'}"
+        return internal if _SKILL_NAME_RE.fullmatch(internal) else f"auto-{label}-{umo_hash}-skill"[:64].rstrip(".-_")
 
     def _resolve_current_skill_name(self, event: AstrMessageEvent, skill_name: str) -> str | None:
         return self.state_store.resolve_skill_name(self._umo(event), skill_name)
@@ -500,7 +520,11 @@ class AutoSkillsPlugin(Star):
         if not skills:
             yield event.plain_result("No auto-created skills yet.")
             return
-        lines = [f"- {item['name']} v{item.get('version', 0)}: {item.get('last_action', '')}" for item in skills]
+        lines = [
+            f"- {item.get('display_name') or item['name']} -> {item['name']} "
+            f"v{item.get('version', 0)}: {item.get('last_action', '')}"
+            for item in skills
+        ]
         yield event.plain_result("Auto-created skills:\n" + "\n".join(lines))
 
     @filter.permission_type(filter.PermissionType.ADMIN)
