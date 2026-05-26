@@ -209,5 +209,7 @@ class SkillStore:
             action="rollback",
             reason=f"Rolled back from {backup_path}",
             backup_path=None,
+            umo=str(record.get("umo") or ""),
+            display_name=str(record.get("display_name") or skill_name),
         )
         return backup_path

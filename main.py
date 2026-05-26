@@ -29,6 +29,13 @@ from .auto_skills.state_store import StateStore
 
 
 _SKILL_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
+_PROTECTED_TOOL_NAMES = {
+    "astrbot_execute_python",
+    "astrbot_execute_ipython",
+    "astrbot_execute_shell",
+    "astrbot_file_write_tool",
+    "astrbot_file_edit_tool",
+}
 
 
 class AutoSkillsPlugin(Star):
@@ -129,14 +136,107 @@ class AutoSkillsPlugin(Star):
             )
         return skills
 
+    def _managed_skill_storage_policy(self) -> str:
+        return (
+            "## Managed Skill Storage Policy\n\n"
+            "`data/skills/` is AstrBot managed Skill storage. You may read "
+            "`data/skills/**/SKILL.md` to understand existing Skills, but you MUST NOT "
+            "directly create, edit, overwrite, rename, move, or delete files or directories "
+            "under `data/skills/` with generic filesystem tools, shell commands, Python code, "
+            "or any other direct file operation.\n\n"
+            "For AstrBot Skill lifecycle changes, use only the Auto Skills tools: "
+            "`auto_skill_create` to create, `auto_skill_patch` to update, and "
+            "`auto_skill_delete_request` to request deletion. If a user asks for direct "
+            "modification or deletion of `data/skills`, refuse that method and offer to use "
+            "the Auto Skills tools instead. Plugin-provided `skills/` directories are read-only."
+        )
+
+    def _mentions_managed_skills(self, value: Any) -> bool:
+        text = str(value or "")
+        if not text:
+            return False
+        normalized = text.replace("\\", "/")
+        skills_root = str(Path(get_astrbot_skills_path()).resolve(strict=False)).replace("\\", "/")
+        return (
+            "data/skills" in normalized
+            or skills_root in normalized
+            or "get_astrbot_skills_path" in normalized
+        )
+
+    def _path_targets_managed_skills(self, value: Any) -> bool:
+        path_text = str(value or "").strip()
+        if not path_text:
+            return False
+        if self._mentions_managed_skills(path_text):
+            return True
+        try:
+            candidate = Path(path_text).expanduser()
+            if not candidate.is_absolute():
+                return False
+            skills_root = Path(get_astrbot_skills_path()).resolve(strict=False)
+            resolved = candidate.resolve(strict=False)
+            return resolved == skills_root or skills_root in resolved.parents
+        except OSError:
+            return False
+
+    def _block_tool_args(self, tool_name: str, tool_args: dict) -> None:
+        logger.warning("Auto Skills blocked %s from accessing data/skills", tool_name)
+        if tool_name in {"astrbot_execute_python", "astrbot_execute_ipython"}:
+            tool_args.clear()
+            tool_args.update(
+                {
+                    "code": "raise PermissionError('Auto Skills blocked access to data/skills')",
+                    "silent": False,
+                    "timeout": 1,
+                }
+            )
+        elif tool_name == "astrbot_execute_shell":
+            tool_args.clear()
+            tool_args.update(
+                {
+                    "command": "echo 'Auto Skills blocked access to data/skills' && exit 1",
+                    "background": False,
+                    "timeout": 1,
+                    "env": {},
+                }
+            )
+        elif tool_name == "astrbot_file_write_tool":
+            tool_args.clear()
+            tool_args.update({"path": "", "content": ""})
+        elif tool_name == "astrbot_file_edit_tool":
+            tool_args.clear()
+            tool_args.update({"path": "", "old": "", "new": "", "replace_all": False})
+
     @filter.on_llm_request()
     async def on_llm_request(self, event: AstrMessageEvent, req: ProviderRequest) -> None:
+        if req.system_prompt is None:
+            req.system_prompt = ""
+        req.system_prompt += f"\n{self._managed_skill_storage_policy()}\n"
         skills = self._current_umo_skill_infos(event)
         if not skills:
             return None
-        if req.system_prompt is None:
-            req.system_prompt = ""
         req.system_prompt += f"\n{build_skills_prompt(skills)}\n"
+        return None
+
+    @filter.on_using_llm_tool()
+    async def on_using_llm_tool(self, event: AstrMessageEvent, tool: Any, tool_args: dict | None) -> None:
+        _ = event
+        if not self.config.protect_skills_from_general_tools:
+            return None
+        if not tool_args:
+            return None
+        tool_name = str(getattr(tool, "name", "") or "")
+        if tool_name not in _PROTECTED_TOOL_NAMES:
+            return None
+        blocked = False
+        if tool_name in {"astrbot_execute_python", "astrbot_execute_ipython"}:
+            blocked = self._mentions_managed_skills(tool_args.get("code"))
+        elif tool_name == "astrbot_execute_shell":
+            blocked = self._mentions_managed_skills(tool_args.get("command"))
+        elif tool_name in {"astrbot_file_write_tool", "astrbot_file_edit_tool"}:
+            blocked = self._path_targets_managed_skills(tool_args.get("path"))
+        if blocked:
+            self._block_tool_args(tool_name, tool_args)
         return None
 
     def _should_review(self, event: AstrMessageEvent, resp: LLMResponse) -> bool:
@@ -384,7 +484,7 @@ class AutoSkillsPlugin(Star):
     @autoskill.command("list")
     async def autoskill_list(self, event: AstrMessageEvent):
         """列出本插件自动创建并拥有的 Skill。"""
-        skills = self.state_store.list_skills()
+        skills = self.state_store.list_skills(self._umo(event))
         if not skills:
             yield event.plain_result("No auto-created skills yet.")
             return
@@ -395,12 +495,17 @@ class AutoSkillsPlugin(Star):
     @autoskill.command("view")
     async def autoskill_view(self, event: AstrMessageEvent, name: str):
         """查看某个自动创建 Skill 的版本、更新时间和最近变更原因。"""
-        record = self.state_store.get_skill(name)
+        internal_name = self._resolve_current_skill_name(event, name)
+        if not internal_name:
+            yield event.plain_result(f"Skill {name} 不属于当前 UMO。")
+            return
+        record = self.state_store.get_skill(internal_name)
         if not record or record.get("created_by") != PLUGIN_OWNER:
             yield event.plain_result(f"Skill {name} is not owned by Auto Skills.")
             return
         yield event.plain_result(
-            f"{name}\n"
+            f"{internal_name}\n"
+            f"display_name: {record.get('display_name')}\n"
             f"version: {record.get('version')}\n"
             f"last_action: {record.get('last_action')}\n"
             f"updated_at: {record.get('updated_at')}\n"
@@ -411,19 +516,27 @@ class AutoSkillsPlugin(Star):
     @autoskill.command("rollback")
     async def autoskill_rollback(self, event: AstrMessageEvent, name: str):
         """将某个自动创建 Skill 回滚到最近一次备份。"""
+        internal_name = self._resolve_current_skill_name(event, name)
+        if not internal_name:
+            yield event.plain_result(f"Rollback failed for {name}: 该 Skill 不属于当前 UMO。")
+            return
         try:
-            backup_path = self.skill_store.rollback_latest(name)
+            backup_path = self.skill_store.rollback_latest(internal_name)
         except Exception as exc:
             yield event.plain_result(f"Rollback failed for {name}: {exc}")
             return
-        yield event.plain_result(f"Rolled back {name} from {backup_path}")
+        yield event.plain_result(f"Rolled back {internal_name} from {backup_path}")
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @autoskill.command("delete")
     async def autoskill_delete(self, event: AstrMessageEvent, name: str):
         """直接删除本插件自动创建并拥有的 Skill，删除前会自动备份。"""
+        internal_name = self._resolve_current_skill_name(event, name)
+        if not internal_name:
+            yield event.plain_result(f"删除 {name} 失败：该 Skill 不属于当前 UMO。")
+            return
         try:
-            backup_path = self.skill_store.delete_owned(name, "admin command delete")
+            backup_path = self.skill_store.delete_owned(internal_name, "admin command delete")
         except Exception as exc:
             yield event.plain_result(f"删除 {name} 失败：{exc}")
             return

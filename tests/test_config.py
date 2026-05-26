@@ -17,6 +17,7 @@ def test_config_uses_safe_defaults():
     assert config.max_backups_per_skill == 10
     assert config.auto_sync_sandbox is True
     assert config.global_activate_generated_skills is False
+    assert config.protect_skills_from_general_tools is True
 
 
 def test_permission_config_splits_review_tools_and_delete():

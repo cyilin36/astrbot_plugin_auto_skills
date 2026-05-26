@@ -61,6 +61,7 @@ def _install_astrbot_stubs(tmp_path):
     filter_module = SimpleNamespace(
         on_agent_done=_identity_decorator,
         on_llm_request=_identity_decorator,
+        on_using_llm_tool=_identity_decorator,
         llm_tool=_identity_decorator,
         permission_type=_identity_decorator,
         command_group=_command_group,
@@ -181,6 +182,10 @@ class OtherUmoEvent(FakeEvent):
     unified_msg_origin = "platform:group:other"
 
 
+def _tool(name, args):
+    return SimpleNamespace(name=name), args
+
+
 async def _wait_for_tasks(plugin):
     tasks = list(plugin._review_tasks)
     if tasks:
@@ -249,7 +254,8 @@ def test_delete_command_deletes_owned_skill_without_second_confirmation(monkeypa
     monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
     AutoSkillsPlugin = _load_plugin(tmp_path)
     plugin = AutoSkillsPlugin(FakeContext(), {"admin_only": False})
-    plugin.skill_store.create_or_patch("daily-report", VALID_MARKDOWN, "create", "initial")
+    asyncio.run(plugin.auto_skill_create(FakeEvent(), "daily-report", VALID_MARKDOWN, "initial"))
+    internal_name = plugin.state_store.resolve_skill_name(FakeEvent.unified_msg_origin, "daily-report")
     deleted = []
     plugin.skill_store.delete_skill = lambda name: deleted.append(name)
 
@@ -261,8 +267,89 @@ def test_delete_command_deletes_owned_skill_without_second_confirmation(monkeypa
 
     results = asyncio.run(run_command())
 
-    assert deleted == ["daily-report"]
+    assert deleted == [internal_name]
     assert "已删除" in results[0]
+
+
+def test_delete_command_rejects_other_umo_internal_name(monkeypatch, tmp_path):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    AutoSkillsPlugin = _load_plugin(tmp_path)
+    plugin = AutoSkillsPlugin(FakeContext(), {"admin_only": False})
+    asyncio.run(plugin.auto_skill_create(OtherUmoEvent(), "daily-report", VALID_MARKDOWN, "other"))
+    other_internal = plugin.state_store.resolve_skill_name(OtherUmoEvent.unified_msg_origin, "daily-report")
+    deleted = []
+    plugin.skill_store.delete_skill = lambda name: deleted.append(name)
+
+    async def run_command():
+        results = []
+        async for result in plugin.autoskill_delete(FakeEvent(), other_internal):
+            results.append(result)
+        return results
+
+    results = asyncio.run(run_command())
+
+    assert deleted == []
+    assert "当前 UMO" in results[0]
+    assert plugin.state_store.get_skill(other_internal)["last_action"] == "create"
+
+
+def test_autoskill_list_shows_only_current_umo_skills(monkeypatch, tmp_path):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    AutoSkillsPlugin = _load_plugin(tmp_path)
+    plugin = AutoSkillsPlugin(FakeContext(), {"admin_only": False})
+    asyncio.run(plugin.auto_skill_create(FakeEvent(), "daily-report", VALID_MARKDOWN, "current"))
+    asyncio.run(plugin.auto_skill_create(OtherUmoEvent(), "daily-report", VALID_MARKDOWN, "other"))
+    current_internal = plugin.state_store.resolve_skill_name(FakeEvent.unified_msg_origin, "daily-report")
+    other_internal = plugin.state_store.resolve_skill_name(OtherUmoEvent.unified_msg_origin, "daily-report")
+
+    async def run_command():
+        results = []
+        async for result in plugin.autoskill_list(FakeEvent()):
+            results.append(result)
+        return results
+
+    results = asyncio.run(run_command())
+
+    assert current_internal in results[0]
+    assert other_internal not in results[0]
+
+
+def test_autoskill_view_rejects_other_umo_internal_name(monkeypatch, tmp_path):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    AutoSkillsPlugin = _load_plugin(tmp_path)
+    plugin = AutoSkillsPlugin(FakeContext(), {"admin_only": False})
+    asyncio.run(plugin.auto_skill_create(OtherUmoEvent(), "daily-report", VALID_MARKDOWN, "other"))
+    other_internal = plugin.state_store.resolve_skill_name(OtherUmoEvent.unified_msg_origin, "daily-report")
+
+    async def run_command():
+        results = []
+        async for result in plugin.autoskill_view(FakeEvent(), other_internal):
+            results.append(result)
+        return results
+
+    results = asyncio.run(run_command())
+
+    assert "当前 UMO" in results[0]
+
+
+def test_autoskill_rollback_rejects_other_umo_internal_name(monkeypatch, tmp_path):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    AutoSkillsPlugin = _load_plugin(tmp_path)
+    plugin = AutoSkillsPlugin(FakeContext(), {"admin_only": False})
+    asyncio.run(plugin.auto_skill_create(OtherUmoEvent(), "daily-report", VALID_MARKDOWN, "other"))
+    updated = VALID_MARKDOWN.replace("Body", "Other Updated Body")
+    asyncio.run(plugin.auto_skill_patch(OtherUmoEvent(), "daily-report", updated, "other patch"))
+    other_internal = plugin.state_store.resolve_skill_name(OtherUmoEvent.unified_msg_origin, "daily-report")
+
+    async def run_command():
+        results = []
+        async for result in plugin.autoskill_rollback(FakeEvent(), other_internal):
+            results.append(result)
+        return results
+
+    results = asyncio.run(run_command())
+
+    assert "当前 UMO" in results[0]
 
 
 def test_oral_delete_requires_admin_confirmation(monkeypatch, tmp_path):
@@ -429,7 +516,7 @@ def test_llm_tool_delete_request_uses_confirmation_flow(monkeypatch, tmp_path):
     assert deleted[0].startswith("auto-")
 
 
-def test_llm_request_injects_only_current_umo_skills(monkeypatch, tmp_path):
+def test_llm_request_injects_policy_every_turn_and_only_current_umo_skills(monkeypatch, tmp_path):
     monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
     AutoSkillsPlugin = _load_plugin(tmp_path)
     plugin = AutoSkillsPlugin(FakeContext(), {"admin_only": False})
@@ -440,9 +527,65 @@ def test_llm_request_injects_only_current_umo_skills(monkeypatch, tmp_path):
     asyncio.run(plugin.on_llm_request(FakeEvent(), current_req))
     asyncio.run(plugin.on_llm_request(OtherUmoEvent(), other_req))
 
+    assert "managed skill storage policy" in current_req.system_prompt.lower()
+    assert "managed skill storage policy" in other_req.system_prompt.lower()
+    assert "auto_skill_create" in current_req.system_prompt
+    assert "auto_skill_patch" in current_req.system_prompt
+    assert "auto_skill_delete_request" in current_req.system_prompt
     assert "## Skills" in current_req.system_prompt
     assert "Write structured daily reports" in current_req.system_prompt
-    assert other_req.system_prompt == "base"
+    assert "Write structured daily reports" not in other_req.system_prompt
+
+
+def test_llm_request_injects_managed_policy_without_skills(monkeypatch, tmp_path):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    AutoSkillsPlugin = _load_plugin(tmp_path)
+    plugin = AutoSkillsPlugin(FakeContext(), {"admin_only": False})
+    req = SimpleNamespace(system_prompt="base")
+
+    asyncio.run(plugin.on_llm_request(FakeEvent(), req))
+
+    assert req.system_prompt.startswith("base")
+    assert "managed skill storage policy" in req.system_prompt.lower()
+    assert "data/skills" in req.system_prompt
+    assert "auto_skill_create" in req.system_prompt
+    assert "auto_skill_patch" in req.system_prompt
+    assert "auto_skill_delete_request" in req.system_prompt
+
+
+def test_tool_guard_blocks_python_access_to_data_skills(monkeypatch, tmp_path):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    AutoSkillsPlugin = _load_plugin(tmp_path)
+    plugin = AutoSkillsPlugin(FakeContext(), {"admin_only": False})
+    tool, args = _tool("astrbot_execute_python", {"code": "import shutil; shutil.rmtree('/AstrBot/data/skills/x')"})
+
+    asyncio.run(plugin.on_using_llm_tool(FakeEvent(), tool, args))
+
+    assert "PermissionError" in args["code"]
+    assert "data/skills" in args["code"]
+
+
+def test_tool_guard_blocks_shell_access_to_data_skills(monkeypatch, tmp_path):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    AutoSkillsPlugin = _load_plugin(tmp_path)
+    plugin = AutoSkillsPlugin(FakeContext(), {"admin_only": False})
+    tool, args = _tool("astrbot_execute_shell", {"command": "rm -rf data/skills/x"})
+
+    asyncio.run(plugin.on_using_llm_tool(FakeEvent(), tool, args))
+
+    assert "Auto Skills blocked" in args["command"]
+    assert args["timeout"] == 1
+
+
+def test_tool_guard_blocks_file_write_or_edit_to_data_skills(monkeypatch, tmp_path):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    AutoSkillsPlugin = _load_plugin(tmp_path)
+    plugin = AutoSkillsPlugin(FakeContext(), {"admin_only": False})
+
+    for tool_name in ["astrbot_file_write_tool", "astrbot_file_edit_tool"]:
+        tool, args = _tool(tool_name, {"path": "data/skills/demo/SKILL.md", "content": "bad", "old": "a", "new": "b"})
+        asyncio.run(plugin.on_using_llm_tool(FakeEvent(), tool, args))
+        assert args["path"] == ""
 
 
 def test_same_display_name_is_isolated_by_umo(monkeypatch, tmp_path):

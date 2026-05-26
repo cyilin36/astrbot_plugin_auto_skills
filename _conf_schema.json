@@ -77,5 +77,11 @@
     "hint": "默认关闭。关闭时，自动生成的 Skill 只会通过当前 UMO 会话动态注入，不会进入 AstrBot 全局 active Skills，避免其他会话看到或使用。",
     "type": "bool",
     "default": false
+  },
+  "protect_skills_from_general_tools": {
+    "description": "阻止通用工具直接改动 Skill 目录",
+    "hint": "开启后，插件会在 LLM 调用 Shell、Python、文件写入或编辑工具前，尽力阻止明显访问 data/skills 的操作，并提示必须通过 Auto Skills 工具创建、更新或删除。该保护用于防误操作，不是安全沙箱。",
+    "type": "bool",
+    "default": true
   }
 }
