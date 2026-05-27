@@ -34,6 +34,16 @@ def test_general_tool_protection_schema_describes_read_and_search_blocking():
     assert "astrbot_grep_tool" in text
 
 
+def test_readme_describes_purpose_side_effects_config_and_repository():
+    readme = Path("README.md").read_text(encoding="utf-8")
+
+    assert "自动" in readme
+    assert "UMO" in readme
+    assert "副作用" in readme
+    assert "protect_skills_from_general_tools" in readme
+    assert "https://github.com/cyilin36/astrbot_plugin_auto_skills" in readme
+
+
 def test_autoskill_commands_have_docstrings():
     source = Path("main.py").read_text(encoding="utf-8")
 

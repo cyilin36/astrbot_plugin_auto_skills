@@ -17,6 +17,9 @@ def test_metadata_contains_astrbot_required_fields():
     metadata = _read_simple_yaml(Path("metadata.yaml"))
 
     assert metadata["name"] == "astrbot_plugin_auto_skills"
+    assert metadata["version"] == "1.0.0"
+    assert metadata["author"] == "cyilin36"
+    assert metadata["repo"] == "https://github.com/cyilin36/astrbot_plugin_auto_skills"
     for field in ["name", "desc", "version", "author"]:
         assert metadata.get(field)
 
