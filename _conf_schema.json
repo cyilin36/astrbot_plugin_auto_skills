@@ -79,8 +79,8 @@
     "default": false
   },
   "protect_skills_from_general_tools": {
-    "description": "阻止通用工具直接改动 Skill 目录",
-    "hint": "开启后，插件会在 LLM 调用 Shell、Python、文件写入或编辑工具前，尽力阻止明显访问 data/skills 的操作，并提示必须通过 Auto Skills 工具创建、更新或删除。该保护用于防误操作，不是安全沙箱。",
+    "description": "阻止通用工具直接访问 Skill 目录",
+    "hint": "默认开启。开启后，插件会在 LLM 调用 astrbot_file_read_tool、astrbot_grep_tool、Shell、Python、文件写入或编辑工具前，尽力阻止明显读取、搜索、写入或修改 data/skills 的操作，并提示必须通过 Auto Skills 工具创建、更新或删除。该保护用于防误操作，不是安全沙箱。",
     "type": "bool",
     "default": true
   }

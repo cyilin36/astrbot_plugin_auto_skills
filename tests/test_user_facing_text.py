@@ -21,6 +21,19 @@ def test_review_provider_uses_astrbot_provider_selector():
     assert "留空" in provider["hint"]
 
 
+def test_general_tool_protection_schema_describes_read_and_search_blocking():
+    schema = json.loads(Path("_conf_schema.json").read_text(encoding="utf-8"))
+
+    protection = schema["protect_skills_from_general_tools"]
+    text = protection["description"] + protection["hint"]
+    assert protection["type"] == "bool"
+    assert protection["default"] is True
+    assert "读取" in text
+    assert "搜索" in text
+    assert "astrbot_file_read_tool" in text
+    assert "astrbot_grep_tool" in text
+
+
 def test_autoskill_commands_have_docstrings():
     source = Path("main.py").read_text(encoding="utf-8")
 
