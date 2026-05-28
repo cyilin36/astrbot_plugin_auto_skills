@@ -41,6 +41,7 @@ def test_readme_describes_purpose_side_effects_config_and_repository():
     assert "UMO" in readme
     assert "副作用" in readme
     assert "protect_skills_from_general_tools" in readme
+    assert "auto_skill_read" in readme
     assert "https://github.com/cyilin36/astrbot_plugin_auto_skills" in readme
 
 
@@ -65,6 +66,7 @@ def test_auto_skill_llm_tools_have_docstrings():
     source = Path("main.py").read_text(encoding="utf-8")
 
     for tool_name in [
+        "auto_skill_read",
         "auto_skill_create",
         "auto_skill_patch",
         "auto_skill_delete_request",
@@ -72,8 +74,10 @@ def test_auto_skill_llm_tools_have_docstrings():
         assert f'@filter.llm_tool(name="{tool_name}")' in source
         assert f"def {tool_name}" in source
     assert "创建一个新的 AstrBot Skill" in source
+    assert "读取 AstrBot Skill" in source
     assert "更新本插件已经创建并拥有的 AstrBot Skill" in source
     assert "请求删除本插件自动创建并拥有的 AstrBot Skill" in source
     assert "skill_name(string):" in source
+    assert "include_content(bool):" in source
     assert "skill_markdown(string):" in source
     assert "reason(string):" in source

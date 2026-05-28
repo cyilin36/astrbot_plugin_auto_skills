@@ -43,7 +43,7 @@ astrbot_version: ">=4.23.1"
 
 - 监听 `on_agent_done`，在 Agent 回合结束后按配置频率后台复盘。
 - 调用配置的模型提供商判断是否需要创建、更新或删除自动 Skill。
-- 通过 `auto_skill_create`、`auto_skill_patch`、`auto_skill_delete_request` 管理自动 Skill。
+- 通过 `auto_skill_read` 受控读取 Skill，通过 `auto_skill_create`、`auto_skill_patch`、`auto_skill_delete_request` 管理自动 Skill。
 - 生成的 Skill 写入 `data/skills/<internal_skill_name>/SKILL.md`。
 - 每个自动 Skill 都记录所属 UMO，默认只在当前 UMO 会话动态注入。
 - 默认不把自动生成的 Skill 激活到 AstrBot 全局 active Skills，避免其他会话看到或使用。
@@ -94,6 +94,13 @@ auto-group-374027358-50c48fe8-daily-report
 - `protect_skills_from_general_tools`：是否阻止通用工具直接访问 `data/skills/`，默认开启。
 - `max_backups_per_skill`：每个 Skill 最多保留多少份备份，默认 `10`。
 
+## LLM 工具
+
+- `auto_skill_read`：读取 Skill 的受控入口。它会自动允许当前 UMO 的 Auto Skill 和没有 state 记录的全局 Skill，拒绝读取其他 UMO 拥有的 Auto Skill。
+- `auto_skill_create`：创建当前 UMO 的自动 Skill。
+- `auto_skill_patch`：更新当前 UMO 拥有的自动 Skill。
+- `auto_skill_delete_request`：请求删除当前 UMO 拥有的自动 Skill，需要二次确认。
+
 ## 使用后的副作用与限制
 
 启用本插件后，`data/skills/` 会被视为 AstrBot 的受控 Skill 存储区。为了维持 UMO 隔离，Agent 不应再通过通用文件读取、grep、Shell、Python 或其他直接文件操作访问、搜索、创建、编辑、覆盖、移动、重命名或删除 `data/skills/` 下的内容。
@@ -109,6 +116,8 @@ auto-group-374027358-50c48fe8-daily-report
 - `astrbot_file_edit_tool`
 
 因此，使用本插件后，模型可能无法直接用这些通用工具查看或搜索 `data/skills/`。这是预期副作用，不是 AstrBot 故障。
+
+如果需要让模型读取 Skill 内容，应使用 `auto_skill_read`。这个工具不接收文件路径，只接收 Skill 名称；它会自动判断该 Skill 是否属于当前 UMO，或是否是没有 UMO 记录的全局 Skill。
 
 如需新增、更新或删除由本插件管理的 Skill，应使用插件提供的受控工具：`auto_skill_create`、`auto_skill_patch` 和 `auto_skill_delete_request`。直接绕过插件改动 `data/skills/` 可能破坏归属记录、备份、激活状态和 UMO 隔离语义。
 

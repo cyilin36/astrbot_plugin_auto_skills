@@ -165,6 +165,9 @@ class AutoSkillsPlugin(Star):
             "search, create, edit, overwrite, rename, move, or delete files or directories "
             "under `data/skills/` with generic filesystem tools, grep tools, shell commands, "
             "Python code, or any other direct file operation.\n\n"
+            "To read Skill contents, use `auto_skill_read` instead of `astrbot_file_read_tool` "
+            "or `astrbot_grep_tool`. `auto_skill_read` automatically allows current-UMO Auto "
+            "Skills and untracked global Skills, and rejects Auto Skills owned by other UMOs.\n\n"
             "For AstrBot Skill lifecycle changes, use only the Auto Skills tools: "
             "`auto_skill_create` to create, `auto_skill_patch` to update, and "
             "`auto_skill_delete_request` to request deletion. If a user asks for direct "
@@ -401,6 +404,81 @@ class AutoSkillsPlugin(Star):
             await sync_skills_to_active_sandboxes()
         except Exception as exc:
             logger.warning("Auto Skills sandbox sync failed: %s", exc)
+
+    def _read_skill_markdown(self, internal_name: str) -> str:
+        path = Path(get_astrbot_skills_path()) / internal_name / "SKILL.md"
+        if not path.exists():
+            raise FileNotFoundError(f"{internal_name}/SKILL.md does not exist")
+        return path.read_text(encoding="utf-8")
+
+    def _is_safe_global_skill_name(self, skill_name: str) -> bool:
+        path = Path(skill_name)
+        return (
+            bool(skill_name)
+            and not path.is_absolute()
+            and skill_name not in {".", ".."}
+            and "/" not in skill_name
+            and "\\" not in skill_name
+        )
+
+    def _skill_read_metadata(self, name: str, record: dict[str, Any] | None, description: str) -> str:
+        lines = [f"Skill: {record.get('display_name') if record else name}", f"Internal name: {name}"]
+        if record:
+            lines.extend(
+                [
+                    f"UMO: {record.get('umo')}",
+                    f"Version: {record.get('version')}",
+                    f"Last action: {record.get('last_action')}",
+                    f"Updated at: {record.get('updated_at')}",
+                    f"Reason: {record.get('last_reason')}",
+                ]
+            )
+        else:
+            lines.append("Scope: global")
+        lines.append(f"Description: {description}")
+        return "\n".join(lines)
+
+    @filter.llm_tool(name="auto_skill_read")
+    async def auto_skill_read(self, event: AstrMessageEvent, skill_name: str, include_content: bool = True) -> str:
+        """读取 AstrBot Skill，自动遵守 UMO 隔离。
+
+        Args:
+            skill_name(string): 要读取的 Skill 名称。可传当前 UMO 的 display name、internal name，或没有 UMO 记录的全局 Skill 名称；留空时列出可读取的 Skill。
+            include_content(bool): 是否返回完整 SKILL.md 内容。false 时只返回元数据。
+        """
+        umo = self._umo(event)
+        requested = str(skill_name or "").strip()
+        try:
+            if not requested:
+                current = self.state_store.list_skills(umo)
+                lines = ["当前可读取的 Skill："]
+                for item in current:
+                    lines.append(f"- {item.get('display_name') or item['name']} -> {item['name']} (current UMO)")
+                state_names = set(self.state_store.load().get("skills", {}).keys())
+                skills_root = Path(get_astrbot_skills_path())
+                if skills_root.exists():
+                    for skill_dir in sorted(path for path in skills_root.iterdir() if path.is_dir()):
+                        if skill_dir.name not in state_names and (skill_dir / "SKILL.md").exists():
+                            lines.append(f"- {skill_dir.name} (global)")
+                return "\n".join(lines) if len(lines) > 1 else "当前没有可读取的 Skill。"
+
+            internal_name = self._resolve_current_skill_name(event, requested)
+            record = self.state_store.get_skill(internal_name) if internal_name else None
+            if not internal_name:
+                record = self.state_store.get_skill(requested)
+                if record and record.get("created_by") == PLUGIN_OWNER and record.get("umo") != umo:
+                    return f"无法读取 Skill {requested}：该 Skill 不属于当前 UMO。"
+                if not self._is_safe_global_skill_name(requested):
+                    return f"无法读取 Skill {requested}：Skill 名称不能包含路径。"
+                internal_name = requested
+                record = None
+            content = self._read_skill_markdown(internal_name)
+            metadata = self._skill_read_metadata(internal_name, record, self._skill_description(internal_name))
+        except Exception as exc:
+            return f"读取 Skill {requested or skill_name} 失败：{exc}"
+        if not include_content:
+            return metadata
+        return f"{metadata}\n\n```markdown\n{content}\n```"
 
     @filter.llm_tool(name="auto_skill_create")
     async def auto_skill_create(

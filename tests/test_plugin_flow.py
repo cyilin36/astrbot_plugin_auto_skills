@@ -518,6 +518,91 @@ def test_llm_tool_delete_request_uses_confirmation_flow(monkeypatch, tmp_path):
     assert deleted[0].startswith("auto-")
 
 
+def test_llm_tool_read_returns_current_umo_auto_skill(monkeypatch, tmp_path):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    AutoSkillsPlugin = _load_plugin(tmp_path)
+    plugin = AutoSkillsPlugin(FakeContext(), {"admin_only": False})
+    asyncio.run(plugin.auto_skill_create(FakeEvent(), "daily-report", VALID_MARKDOWN, "initial"))
+
+    result = asyncio.run(plugin.auto_skill_read(FakeEvent(), "daily-report", True))
+
+    assert "Skill: daily-report" in result
+    assert "Internal name: auto-private-user-" in result
+    assert "```markdown" in result
+    assert "# Daily Report" in result
+
+
+def test_llm_tool_read_returns_untracked_global_skill(monkeypatch, tmp_path):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    AutoSkillsPlugin = _load_plugin(tmp_path)
+    plugin = AutoSkillsPlugin(FakeContext(), {"admin_only": False})
+    skill_dir = tmp_path / "data" / "skills" / "global-report"
+    skill_dir.mkdir(parents=True)
+    skill_dir.joinpath("SKILL.md").write_text(
+        "---\nname: global-report\ndescription: Global report skill.\n---\n\n# Global Report\n",
+        encoding="utf-8",
+    )
+
+    result = asyncio.run(plugin.auto_skill_read(FakeEvent(), "global-report", True))
+
+    assert "Skill: global-report" in result
+    assert "Global report skill" in result
+    assert "# Global Report" in result
+
+
+def test_llm_tool_read_returns_untracked_chinese_global_skill(monkeypatch, tmp_path):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    AutoSkillsPlugin = _load_plugin(tmp_path)
+    plugin = AutoSkillsPlugin(FakeContext(), {"admin_only": False})
+    skill_dir = tmp_path / "data" / "skills" / "写日报"
+    skill_dir.mkdir(parents=True)
+    skill_dir.joinpath("SKILL.md").write_text(
+        "---\nname: 写日报\ndescription: 写中文日报。\n---\n\n# 写日报\n",
+        encoding="utf-8",
+    )
+
+    result = asyncio.run(plugin.auto_skill_read(FakeEvent(), "写日报", True))
+
+    assert "Skill: 写日报" in result
+    assert "写中文日报" in result
+    assert "# 写日报" in result
+
+
+def test_llm_tool_read_rejects_other_umo_auto_skill(monkeypatch, tmp_path):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    AutoSkillsPlugin = _load_plugin(tmp_path)
+    plugin = AutoSkillsPlugin(FakeContext(), {"admin_only": False})
+    asyncio.run(plugin.auto_skill_create(OtherUmoEvent(), "daily-report", VALID_MARKDOWN, "other"))
+    other_internal = plugin.state_store.resolve_skill_name(OtherUmoEvent.unified_msg_origin, "daily-report")
+
+    result = asyncio.run(plugin.auto_skill_read(FakeEvent(), other_internal, True))
+
+    assert "不属于当前 UMO" in result
+    assert "# Daily Report" not in result
+
+
+def test_llm_tool_read_without_name_lists_current_umo_and_global_skills(monkeypatch, tmp_path):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    AutoSkillsPlugin = _load_plugin(tmp_path)
+    plugin = AutoSkillsPlugin(FakeContext(), {"admin_only": False})
+    asyncio.run(plugin.auto_skill_create(FakeEvent(), "daily-report", VALID_MARKDOWN, "current"))
+    asyncio.run(plugin.auto_skill_create(OtherUmoEvent(), "daily-report", VALID_MARKDOWN, "other"))
+    current_internal = plugin.state_store.resolve_skill_name(FakeEvent.unified_msg_origin, "daily-report")
+    other_internal = plugin.state_store.resolve_skill_name(OtherUmoEvent.unified_msg_origin, "daily-report")
+    skill_dir = tmp_path / "data" / "skills" / "global-report"
+    skill_dir.mkdir(parents=True)
+    skill_dir.joinpath("SKILL.md").write_text(
+        "---\nname: global-report\ndescription: Global report skill.\n---\n\n# Global Report\n",
+        encoding="utf-8",
+    )
+
+    result = asyncio.run(plugin.auto_skill_read(FakeEvent(), "", False))
+
+    assert current_internal in result
+    assert "global-report" in result
+    assert other_internal not in result
+
+
 def test_llm_request_injects_policy_every_turn_and_only_current_umo_skills(monkeypatch, tmp_path):
     monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
     AutoSkillsPlugin = _load_plugin(tmp_path)
@@ -534,6 +619,7 @@ def test_llm_request_injects_policy_every_turn_and_only_current_umo_skills(monke
     assert "auto_skill_create" in current_req.system_prompt
     assert "auto_skill_patch" in current_req.system_prompt
     assert "auto_skill_delete_request" in current_req.system_prompt
+    assert "auto_skill_read" in current_req.system_prompt
     assert "## Skills" in current_req.system_prompt
     assert "Write structured daily reports" in current_req.system_prompt
     assert "Write structured daily reports" not in other_req.system_prompt
@@ -553,6 +639,7 @@ def test_llm_request_injects_managed_policy_without_skills(monkeypatch, tmp_path
     assert "auto_skill_create" in req.system_prompt
     assert "auto_skill_patch" in req.system_prompt
     assert "auto_skill_delete_request" in req.system_prompt
+    assert "auto_skill_read" in req.system_prompt
 
 
 def test_tool_guard_blocks_python_access_to_data_skills(monkeypatch, tmp_path):
