@@ -81,6 +81,15 @@ class StateStore:
         record["backups"] = backups
         self.save(data)
 
+    def remove_skill(self, skill_name: str) -> None:
+        data = self.load()
+        skills = data.setdefault("skills", {})
+        if skill_name not in skills:
+            return
+        skills.pop(skill_name, None)
+        data["last_review"] = _now_iso()
+        self.save(data)
+
     def record_write(
         self,
         skill_name: str,

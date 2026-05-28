@@ -121,7 +121,7 @@ def test_patch_prunes_old_backups_to_configured_limit(tmp_path):
     assert all(Path(path).exists() for path in record["backups"])
 
 
-def test_delete_owned_skill_backs_up_then_deletes_and_records_state(tmp_path):
+def test_delete_owned_skill_deletes_skill_state_and_backup_dir(tmp_path):
     skills_root = tmp_path / "skills"
     state = StateStore(tmp_path / "state.json")
     deleted = []
@@ -135,13 +135,16 @@ def test_delete_owned_skill_backs_up_then_deletes_and_records_state(tmp_path):
 
     store = SkillStore(skills_root, state, delete_skill=delete_skill)
     store.create_or_patch("daily-report", VALID_MARKDOWN, "create", "initial")
+    updated = VALID_MARKDOWN.replace("Daily Report", "Daily Report Writer")
+    store.create_or_patch("daily-report", updated, "patch", "rename heading")
+    backup_dir = tmp_path / "backups" / "daily-report"
+    assert backup_dir.exists()
 
     backup_path = store.delete_owned("daily-report", "admin command")
 
-    assert backup_path is not None
-    assert backup_path.exists()
+    assert backup_path is None
     assert deleted == ["daily-report"]
     assert not (skills_root / "daily-report").exists()
-    record = state.get_skill("daily-report")
-    assert record is not None
-    assert record["last_action"] == "delete"
+    assert state.get_skill("daily-report") is None
+    assert "daily-report" not in state.load()["skills"]
+    assert not backup_dir.exists()

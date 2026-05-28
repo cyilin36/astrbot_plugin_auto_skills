@@ -47,7 +47,7 @@ astrbot_version: ">=4.23.1"
 - 生成的 Skill 写入 `data/skills/<internal_skill_name>/SKILL.md`。
 - 每个自动 Skill 都记录所属 UMO，默认只在当前 UMO 会话动态注入。
 - 默认不把自动生成的 Skill 激活到 AstrBot 全局 active Skills，避免其他会话看到或使用。
-- 更新或删除前会备份旧 `SKILL.md`，并按配置清理过旧备份。
+- 更新前会备份旧 `SKILL.md`，并按配置清理过旧备份；确认删除后会移除 Skill、state 记录和对应备份目录。
 
 ## UMO 隔离
 
@@ -129,7 +129,7 @@ auto-group-374027358-50c48fe8-daily-report
 - `/autoskill list`：列出当前 UMO 的自动 Skill。
 - `/autoskill view <name>`：查看当前 UMO 中某个自动 Skill 的状态。
 - `/autoskill rollback <name>`：回滚当前 UMO 中某个自动 Skill 到最近备份。
-- `/autoskill delete <name>`：删除当前 UMO 中某个自动 Skill，删除前自动备份。
+- `/autoskill delete <name>`：删除当前 UMO 中某个自动 Skill，并清理 state 记录和对应备份目录。
 
 ## 安全边界
 

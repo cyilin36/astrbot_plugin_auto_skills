@@ -644,17 +644,17 @@ class AutoSkillsPlugin(Star):
     @filter.permission_type(filter.PermissionType.ADMIN)
     @autoskill.command("delete")
     async def autoskill_delete(self, event: AstrMessageEvent, name: str):
-        """直接删除本插件自动创建并拥有的 Skill，删除前会自动备份。"""
+        """直接删除本插件自动创建并拥有的 Skill、状态记录和对应备份。"""
         internal_name = self._resolve_current_skill_name(event, name)
         if not internal_name:
             yield event.plain_result(f"删除 {name} 失败：该 Skill 不属于当前 UMO。")
             return
         try:
-            backup_path = self.skill_store.delete_owned(internal_name, "admin command delete")
+            self.skill_store.delete_owned(internal_name, "admin command delete")
         except Exception as exc:
             yield event.plain_result(f"删除 {name} 失败：{exc}")
             return
-        yield event.plain_result(f"已删除自动创建的 Skill：{name}，删除前备份：{backup_path}")
+        yield event.plain_result(f"已删除自动创建的 Skill：{name}")
 
     async def terminate(self) -> None:
         for task in list(self._review_tasks):

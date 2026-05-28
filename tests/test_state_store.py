@@ -54,3 +54,14 @@ def test_state_store_does_not_list_deleted_skills(tmp_path):
     store.record_write("a", "", "delete", "deleted", tmp_path / "backup.md")
 
     assert store.list_skills() == []
+
+
+def test_state_store_removes_skill_record(tmp_path):
+    store = StateStore(tmp_path / "state.json")
+    store.record_write("a", "1", "create", "reason", None)
+
+    store.remove_skill("a")
+
+    assert store.get_skill("a") is None
+    assert store.load()["skills"] == {}
+    assert store.list_skills() == []

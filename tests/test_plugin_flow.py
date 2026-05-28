@@ -270,6 +270,9 @@ def test_delete_command_deletes_owned_skill_without_second_confirmation(monkeypa
 
     assert deleted == [internal_name]
     assert "已删除" in results[0]
+    assert "备份" not in results[0]
+    assert plugin.state_store.get_skill(internal_name) is None
+    assert plugin.state_store.resolve_skill_name(FakeEvent.unified_msg_origin, "daily-report") is None
 
 
 def test_delete_command_rejects_other_umo_internal_name(monkeypatch, tmp_path):
@@ -452,6 +455,8 @@ def test_llm_tool_delete_request_can_allow_members_when_configured(monkeypatch, 
     assert "请再次确认" in first
     assert "已删除" in second
     assert len(deleted) == 1
+    internal_name = deleted[0]
+    assert plugin.state_store.get_skill(internal_name) is None
 
 
 def test_llm_tool_create_skill_writes_owned_skill(monkeypatch, tmp_path):
@@ -516,6 +521,7 @@ def test_llm_tool_delete_request_uses_confirmation_flow(monkeypatch, tmp_path):
     assert "已删除" in second
     assert len(deleted) == 1
     assert deleted[0].startswith("auto-")
+    assert plugin.state_store.get_skill(deleted[0]) is None
 
 
 def test_llm_tool_read_returns_current_umo_auto_skill(monkeypatch, tmp_path):

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
@@ -110,6 +111,11 @@ class SkillStore:
         backup_path.write_text(skill_md.read_text(encoding="utf-8"), encoding="utf-8")
         return backup_path
 
+    def _delete_backup_dir(self, skill_name: str) -> None:
+        backup_dir = self.backup_root / skill_name
+        if backup_dir.exists():
+            shutil.rmtree(backup_dir)
+
     def _prune_backups(self, skill_name: str) -> None:
         record = self.state_store.get_skill(skill_name)
         if not record:
@@ -163,11 +169,9 @@ class SkillStore:
         self._prune_backups(skill_name)
 
     def delete_owned(self, skill_name: str, reason: str) -> Path | None:
+        _ = reason
         if not self.state_store.is_owned(skill_name):
             raise PermissionError(f"Skill {skill_name} is not owned by this plugin")
-        record = self.state_store.get_skill(skill_name) or {}
-        skill_md = self._skill_md(skill_name)
-        backup_path = self._backup_existing(skill_name, skill_md)
         if self.delete_skill is not None:
             self.delete_skill(skill_name)
         else:
@@ -177,17 +181,9 @@ class SkillStore:
                     if child.is_file():
                         child.unlink()
                 skill_dir.rmdir()
-        self.state_store.record_write(
-            skill_name=skill_name,
-            content_hash="",
-            action="delete",
-            reason=reason,
-            backup_path=backup_path,
-            umo=str(record.get("umo") or ""),
-            display_name=str(record.get("display_name") or skill_name),
-        )
-        self._prune_backups(skill_name)
-        return backup_path
+        self._delete_backup_dir(skill_name)
+        self.state_store.remove_skill(skill_name)
+        return None
 
     def rollback_latest(self, skill_name: str) -> Path:
         record = self.state_store.get_skill(skill_name)
