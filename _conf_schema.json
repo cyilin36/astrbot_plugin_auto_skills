@@ -1,69 +1,51 @@
 {
   "enabled": {
-    "description": "启用自动 Skill 复盘",
-    "hint": "开启后，插件会在 Agent 回合结束后按设定频率后台复盘，并判断是否需要在当前 UMO workspace 的 skills/ 下创建或更新 Skill。",
+    "description": "启用自动 Skill 复盘提醒",
+    "hint": "开启后，插件会在 Agent 回合结束后按设定频率后台复盘。若发现可沉淀知识，会在后续对话中提醒主 Agent 用内置 skill-creator 更新当前 workspace 的 skills/。本插件本身不写 SKILL.md。",
     "type": "bool",
     "default": true
   },
   "review_admin_only": {
     "description": "仅管理员可触发后台自动复盘",
-    "hint": "开启后，只有 AstrBot 管理员的对话会触发后台复盘。关闭后，普通成员的对话也可能在当前 UMO workspace 内自动创建或更新 Skill。",
-    "type": "bool",
-    "default": true
-  },
-  "llm_tool_write_admin_only": {
-    "description": "仅管理员可通过 LLM 工具创建或更新 Skill",
-    "hint": "控制 auto_skill_create 和 auto_skill_patch。关闭后，普通成员也可以通过当前 UMO 的 LLM 工具创建或更新 workspace Skill。建议保持开启。",
-    "type": "bool",
-    "default": true
-  },
-  "delete_admin_only": {
-    "description": "仅管理员可删除自动 Skill",
-    "hint": "控制后台复盘删除请求和 auto_skill_delete_request。关闭后，普通成员也可以删除当前 UMO workspace 的自动 Skill，但仍需要二次确认。强烈建议保持开启。",
+    "hint": "开启后，只有 AstrBot 管理员的对话会触发后台复盘。关闭后，普通成员的对话也可能产生 skill-creator 提醒。",
     "type": "bool",
     "default": true
   },
   "review_every_turns": {
     "description": "每多少轮 Agent 完成后复盘一次",
-    "hint": "按会话分别计数。例如填 10 表示同一会话每完成 10 次 Agent 回合后，后台调用一次模型进行 Skill 创建/更新判断。",
+    "hint": "按会话分别计数。例如填 10 表示同一会话每完成 10 次 Agent 回合后，后台调用一次模型判断是否需要提醒 skill-creator。",
     "type": "int",
     "default": 10
   },
   "review_provider_id": {
     "description": "复盘使用的模型提供商",
-    "hint": "可选。从 AstrBot 已添加的模型提供商中选择。留空时使用当前会话正在使用的模型提供商；选择后会固定使用该模型执行后台复盘、Skill 生成和更新判断。",
+    "hint": "可选。从 AstrBot 已添加的模型提供商中选择。留空时使用当前会话正在使用的模型提供商。",
     "type": "string",
     "_special": "select_provider",
     "default": ""
   },
   "max_concurrent_reviews": {
     "description": "最大并发复盘数",
-    "hint": "限制同时运行的后台复盘任务数量，避免多个会话同时触发时压垮模型或写入状态。通常保持 1 即可。",
+    "hint": "限制同时运行的后台复盘任务数量。通常保持 1 即可。",
     "type": "int",
     "default": 1
   },
   "review_timeout_seconds": {
     "description": "单次复盘超时时间（秒）",
-    "hint": "后台调用模型进行 Skill 判断的最长等待时间。超时只会记录失败状态，不会影响主对话回复。",
+    "hint": "后台调用模型进行 Skill 判断的最长等待时间。超时不会影响主对话回复。",
     "type": "int",
     "default": 60
   },
-  "max_skill_chars": {
-    "description": "生成的 SKILL.md 最大字符数",
-    "hint": "限制模型生成或更新的 Skill 文件长度，防止一次写入过大的 SKILL.md。",
+  "pending_inject_turns": {
+    "description": "建议提醒注入轮数",
+    "hint": "复盘产生 create/patch/delete 建议后，在随后多少次 LLM 请求的 system prompt 中提醒主 Agent 用 skill-creator 处理。处理完或轮数用尽后自动停止。",
     "type": "int",
-    "default": 100000
+    "default": 3
   },
-  "max_description_chars": {
-    "description": "Skill 描述最大字符数",
-    "hint": "限制 SKILL.md YAML frontmatter 中 description 字段长度。description 会出现在当前会话的 Skills 列表中。",
-    "type": "int",
-    "default": 1024
-  },
-  "max_backups_per_skill": {
-    "description": "每个 Skill 最多保留的备份数",
-    "hint": "每次更新或覆盖前都会备份旧 SKILL.md 到插件数据目录。超过该数量时，会自动删除最旧的备份文件，并同步清理插件 state.json 里的备份路径。",
-    "type": "int",
-    "default": 10
+  "notify_on_suggestion": {
+    "description": "产生建议时向会话发送一条提示消息",
+    "hint": "默认关闭，避免打扰用户。开启后，复盘发现可沉淀 Skill 时会额外发一条简短提示。",
+    "type": "bool",
+    "default": false
   }
 }
