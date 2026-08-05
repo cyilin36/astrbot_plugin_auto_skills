@@ -1,6 +1,6 @@
 name: astrbot_plugin_auto_skills
-desc: Automatically creates and updates AstrBot Skills after successful Agent turns.
-version: 1.0.0
+desc: Automatically creates and updates AstrBot workspace Skills after successful Agent turns.
+version: 2.0.0
 author: cyilin36
 repo: https://github.com/cyilin36/astrbot_plugin_auto_skills
-astrbot_version: ">=4.23.1"
+astrbot_version: ">=4.27.1"

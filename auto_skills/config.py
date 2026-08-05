@@ -34,9 +34,6 @@ class AutoSkillsConfig:
     max_skill_chars: int = 100000
     max_description_chars: int = 1024
     max_backups_per_skill: int = 10
-    auto_sync_sandbox: bool = True
-    global_activate_generated_skills: bool = False
-    protect_skills_from_general_tools: bool = True
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any] | None) -> "AutoSkillsConfig":
@@ -54,7 +51,4 @@ class AutoSkillsConfig:
             max_skill_chars=_positive_int(raw, "max_skill_chars", 100000),
             max_description_chars=_positive_int(raw, "max_description_chars", 1024),
             max_backups_per_skill=_positive_int(raw, "max_backups_per_skill", 10),
-            auto_sync_sandbox=_bool_value(raw, "auto_sync_sandbox", True),
-            global_activate_generated_skills=_bool_value(raw, "global_activate_generated_skills", False),
-            protect_skills_from_general_tools=_bool_value(raw, "protect_skills_from_general_tools", True),
         )

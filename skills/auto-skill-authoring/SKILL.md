@@ -1,26 +1,36 @@
 ---
 name: auto-skill-authoring
-description: Use when creating, updating, deleting, reviewing, or discussing AstrBot Skills, Auto Skills, SKILL.md, or files under data/skills.
+description: Use when creating, updating, deleting, reviewing, or discussing AstrBot workspace Skills, Auto Skills, SKILL.md, or files under the current session workspace skills directory.
 ---
 
 # Auto Skill Authoring
 
-Use this skill whenever the task involves AstrBot Skills, Auto Skills, `SKILL.md`, or `data/skills`.
+Use this skill whenever the task involves AstrBot workspace Skills, Auto Skills, or `SKILL.md` files under the current session workspace.
+
+## Where Skills live
+
+- Auto Skills writes to the **current UMO workspace**: `skills/<skill-name>/SKILL.md`.
+- AstrBot injects workspace Skills automatically on each request when `computer_use_runtime=local`.
+- Do **not** write global `data/skills/` through this plugin. Global installation is outside Auto Skills scope.
 
 ## Rules
 
-1. `data/skills/` is managed storage. Do not directly create, edit, overwrite, move, rename, or delete files there.
-2. Generic filesystem tools, shell commands, and Python code are not authorized for Skill lifecycle writes.
-3. To create a Skill, call `auto_skill_create`.
-4. To update a Skill owned by Auto Skills, call `auto_skill_patch`.
-5. To request deletion, call `auto_skill_delete_request`.
-6. Reading existing `SKILL.md` files is allowed for understanding and patch preparation.
-7. Generated skills are written to AstrBot's user skills directory, not this plugin's `skills/` directory.
-8. The plugin's own `skills/` directory is read-only in AstrBot and exists only to explain this mechanism.
-9. A generated skill should capture durable procedural knowledge: reusable workflows, debugging paths, verification steps, and pitfalls.
-10. Do not create skills for one-off facts, secrets, temporary environment failures, or private user details.
-11. The plugin only updates skills it previously created and recorded as plugin-owned.
+1. Prefer the Auto Skills tools for managed lifecycle changes:
+   - `auto_skill_create` to create or overwrite a workspace Skill
+   - `auto_skill_patch` to update a Skill already owned by Auto Skills
+   - `auto_skill_delete_request` to request deletion with confirmation
+   - `auto_skill_read` to inspect current workspace Skills
+2. Follow AstrBot skill-creator conventions:
+   - Name: lowercase letters, digits, single hyphens only (`my-skill`)
+   - Directory name equals frontmatter `name`
+   - Frontmatter needs `name` and `description`
+   - `description` must include capability **and** concrete trigger conditions
+   - Body uses imperative operational instructions
+3. Capture durable procedural knowledge only: reusable workflows, debugging paths, verification steps, constraints, and pitfalls.
+4. Do not create Skills for one-off facts, secrets, temporary environment failures, or private user details.
+5. Prefer patching an existing class-level Skill over creating many narrow one-session Skills.
+6. Generic filesystem tools may still touch the current workspace. That is allowed, but managed create/update/delete should use Auto Skills tools so backups and ownership are recorded.
 
-## Docker Note
+## After writing
 
-After writing `data/skills/<name>/SKILL.md`, the plugin calls AstrBot's `SkillManager().set_skill_active(name, True)`. This updates `data/skills.json`, which is important when `data/` is mounted as a Docker volume.
+AstrBot discovers workspace Skills on the next local-runtime request. No global activation or sandbox sync is required for workspace Skills.

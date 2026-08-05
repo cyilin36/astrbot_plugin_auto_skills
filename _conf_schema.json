@@ -1,25 +1,25 @@
 {
   "enabled": {
     "description": "启用自动 Skill 复盘",
-    "hint": "开启后，插件会在 Agent 回合结束后按设定频率后台复盘，并判断是否需要创建或更新可复用的 AstrBot Skill。",
+    "hint": "开启后，插件会在 Agent 回合结束后按设定频率后台复盘，并判断是否需要在当前 UMO workspace 的 skills/ 下创建或更新 Skill。",
     "type": "bool",
     "default": true
   },
   "review_admin_only": {
     "description": "仅管理员可触发后台自动复盘",
-    "hint": "开启后，只有 AstrBot 管理员的对话会触发后台复盘。关闭后，普通成员的对话也可能在当前 UMO 内自动创建或更新 Skill。",
+    "hint": "开启后，只有 AstrBot 管理员的对话会触发后台复盘。关闭后，普通成员的对话也可能在当前 UMO workspace 内自动创建或更新 Skill。",
     "type": "bool",
     "default": true
   },
   "llm_tool_write_admin_only": {
     "description": "仅管理员可通过 LLM 工具创建或更新 Skill",
-    "hint": "控制 auto_skill_create 和 auto_skill_patch。关闭后，普通成员也可以通过当前 UMO 的 LLM 工具创建或更新自动 Skill。建议保持开启。",
+    "hint": "控制 auto_skill_create 和 auto_skill_patch。关闭后，普通成员也可以通过当前 UMO 的 LLM 工具创建或更新 workspace Skill。建议保持开启。",
     "type": "bool",
     "default": true
   },
   "delete_admin_only": {
     "description": "仅管理员可删除自动 Skill",
-    "hint": "控制后台复盘删除请求和 auto_skill_delete_request。关闭后，普通成员也可以删除当前 UMO 的自动 Skill，但仍需要二次确认。强烈建议保持开启。",
+    "hint": "控制后台复盘删除请求和 auto_skill_delete_request。关闭后，普通成员也可以删除当前 UMO workspace 的自动 Skill，但仍需要二次确认。强烈建议保持开启。",
     "type": "bool",
     "default": true
   },
@@ -56,32 +56,14 @@
   },
   "max_description_chars": {
     "description": "Skill 描述最大字符数",
-    "hint": "限制 SKILL.md YAML frontmatter 中 description 字段长度。description 会出现在 AstrBot Skills 列表和主 Agent prompt 中。",
+    "hint": "限制 SKILL.md YAML frontmatter 中 description 字段长度。description 会出现在当前会话的 Skills 列表中。",
     "type": "int",
     "default": 1024
   },
   "max_backups_per_skill": {
     "description": "每个 Skill 最多保留的备份数",
-    "hint": "每次更新或删除前都会备份旧 SKILL.md。超过该数量时，会自动删除最旧的备份文件，并同步清理插件 state.json 里的备份路径。",
+    "hint": "每次更新或覆盖前都会备份旧 SKILL.md 到插件数据目录。超过该数量时，会自动删除最旧的备份文件，并同步清理插件 state.json 里的备份路径。",
     "type": "int",
     "default": 10
-  },
-  "auto_sync_sandbox": {
-    "description": "写入后同步到活跃沙盒",
-    "hint": "开启后，插件在写入或更新 Skill 后会尽力调用 AstrBot 沙盒同步逻辑，让活跃 Agent 沙盒尽快看到新 Skill。同步失败不会回滚 Skill 写入。",
-    "type": "bool",
-    "default": true
-  },
-  "global_activate_generated_skills": {
-    "description": "全局激活自动生成的 Skill",
-    "hint": "默认关闭。关闭时，自动生成的 Skill 只会通过当前 UMO 会话动态注入，不会进入 AstrBot 全局 active Skills，避免其他会话看到或使用。",
-    "type": "bool",
-    "default": false
-  },
-  "protect_skills_from_general_tools": {
-    "description": "阻止通用工具直接访问 Skill 目录",
-    "hint": "默认开启。开启后，插件会在 LLM 调用 astrbot_file_read_tool、astrbot_grep_tool、Shell、Python、文件写入或编辑工具前，尽力阻止明显读取、搜索、写入或修改 data/skills 的操作，并提示必须通过 Auto Skills 工具创建、更新或删除。该保护用于防误操作，不是安全沙箱。",
-    "type": "bool",
-    "default": true
   }
 }
