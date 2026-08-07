@@ -118,11 +118,8 @@ class AutoSkillsPlugin(Star):
                     workspace_skills=workspace_skills,
                 )
                 provider_id = self.config.review_provider_id
-                if not provider_id and hasattr(self.context, "get_using_provider"):
-                    provider = self.context.get_using_provider(
-                        getattr(event, "unified_msg_origin", None)
-                    )
-                    provider_id = str(getattr(provider, "id", "") or "")
+                if not provider_id:
+                    provider_id = await self.context.get_current_chat_provider_id(umo)
                 llm_resp = await asyncio.wait_for(
                     self.context.llm_generate(
                         chat_provider_id=provider_id,

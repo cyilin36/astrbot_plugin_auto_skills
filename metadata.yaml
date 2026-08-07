@@ -1,6 +1,6 @@
 name: astrbot_plugin_auto_skills
 desc: Reviews completed Agent turns and reminds the main agent to update workspace Skills via skill-creator.
-version: 2.0.0
+version: 2.0.1
 author: cyilin36
 repo: https://github.com/cyilin36/astrbot_plugin_auto_skills
 astrbot_version: ">=4.27.1"

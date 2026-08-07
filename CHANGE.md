@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.1
+
+### 修复
+
+- 修复 `review_provider_id` 留空时，后台复盘错误读取当前会话 Provider ID，导致 AstrBot 提示 `Provider  not found` 的问题
+- 保持原有 Provider 选择逻辑：配置 `review_provider_id` 时使用指定 Provider，留空时使用当前会话 Provider
+
 ## 2.0.0
 
 适配 AstrBot **>= 4.27.1**。与 1.x 不兼容。
